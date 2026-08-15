@@ -1,0 +1,140 @@
+# Hand
+
+A .NET MAUI app that alerts certified telephone responders when the
+helpline needs them. The server side is the
+[Reach](https://github.com/bleedingdeacons/reach) WordPress plugin, which
+holds the alerts and pushes them.
+
+Runs on Android, iOS, Mac Catalyst and Windows from one codebase.
+
+## What it does
+
+A responder signs in, goes on duty, and puts the handset down. When a
+plugin raises an alert through Reach's alerting API, the handset rings —
+loudly, repeatedly, and whether or not the app is on screen — until
+somebody acknowledges it.
+
+That last part is the whole design, and it is worth being precise about
+what each platform can actually do.
+
+| Head | With the app open | With the app closed |
+| --- | --- | --- |
+| **Android** | Looping alarm on the alarm audio stream, vibration, full-screen alert | **Yes.** A data-only FCM message wakes the app, which raises a full-screen-intent notification on an alarm-category channel. The handset behaves like an incoming call, over the lock screen. |
+| **iOS** | Looping alarm (audio session set to `Playback`, so it sounds through the silent switch) | **Yes, for up to 30 seconds.** A terminated app runs no code, so the sound is named in the APNs payload and played by the system. See *Critical alerts* below. |
+| **Windows / macOS** | Looping alarm, toast with alarm scenario | **Only while resident.** FCM does not cover these platforms and nothing can wake a terminated process, so Hand runs from login and stays in the tray, polling. "Closed" means not on screen. |
+
+Push is the fast path, not the reliable one. Every alert is stored by
+Reach before any push is attempted, and every handset polls as well as
+listening — so a phone in a tunnel catches up when it surfaces, and a
+handset whose FCM token has silently rotated still gets its alerts.
+
+## Who can use it
+
+Certified telephone responders, and nobody else.
+
+This is stricter than the Reach website, which also admits 12th-steppers.
+Reach re-checks the responder's role and certification against Unity on
+**every** request, so a lapsed certification stops the handset at its next
+call without anyone remembering to revoke the device. A refused handset
+clears its token and returns to the sign-in screen, so the responder is
+told rather than left with a phone that has quietly gone silent.
+
+## Signing in
+
+Two routes, both ending in the same long-lived device token held in
+platform secure storage (Android keystore, Apple keychain, DPAPI):
+
+- **SSO** — Google, Microsoft, Apple or Facebook, through the system
+  browser. Reach's callback returns a *one-time code* to `hand://auth`,
+  which Hand trades for the token over TLS. The code rather than the token
+  travels through the browser, because a redirect lands in history and can
+  be read by anything else registered for the scheme (RFC 8252).
+- **Password** — straight to Reach, no browser. This is what the Windows
+  head uses when it is not packaged as MSIX and so cannot claim a custom
+  URI scheme, and it is the fallback anywhere the browser flow fails.
+
+## Contact details
+
+An alert can carry contact details for the person to call. They are
+**not** in the push and **not** in the poll — they would otherwise pass
+through Google's servers and sit on a lock screen. Hand shows a *Show
+contact* button, and fetches them over TLS only when a responder taps it.
+Reach writes an audit entry for every such read.
+
+## Configuration
+
+Settings → the Reach server address, how often to poll, and a name for
+this handset (shown in Reach's admin device list).
+
+Build-time configuration follows Register's arrangement: `appsettings.json`
+is embedded, and `devsettings.json` is layered on top when built with
+`UseDevCredentials=true` (the default). Production builds pass
+`-p:UseDevCredentials=false`, so real credentials cannot reach a shipped
+package. Both files are git-ignored.
+
+## Logging
+
+Deliberately identical to Register's, because a duty handset that loses
+its diagnostics the moment it goes out of signal is worse than useless —
+and out of signal is exactly when it will misbehave.
+
+- Serilog, configured before the DI container so startup itself is logged.
+- A **durable** HTTP sink: events are written to a rolling on-disk buffer
+  first and shipped to Better Stack in the background. Offline, the buffer
+  grows until connectivity returns. Events survive hard app kills.
+- `BetterStackLoggerController` rebuilds the whole pipeline atomically when
+  settings change, rather than stacking sinks or leaking the old shipper.
+- Enrichers for application, environment, platform, device label, app
+  version and process id, plus `ExceptionEnricher` for demystified stack
+  traces and the full inner-exception chain.
+- Global handlers for unhandled AppDomain exceptions, unobserved tasks and
+  Android's Java bridge, each with a bounded, never-throwing flush.
+
+`BetterStackConfiguration.Endpoint` normalises a scheme-less value to
+`https://` in its setter. Better Stack's dashboard shows the ingest
+address as a bare hostname, but `IsValid()` needs an absolute URI — and
+without normalisation the config reads as invalid, the controller removes
+the sink, and the app ships nothing at all, silently. Register carried
+exactly that bug and now has the same fix.
+
+## Building
+
+```bash
+dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true
+```
+
+```bash
+dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandWindowsOnly=true
+```
+
+Use those flags rather than `-f`: `-f` sets `TargetFramework` as a global
+property, which forces the chosen TFM onto every project in the tree.
+
+Release Android builds ship `android-arm64` only — the default also builds
+`android-x64`, which doubles the download for an ABI only an emulator
+loads. Signing is opt-in: pass a keystore or the build stays unsigned.
+
+## Setup you have to do yourself
+
+These need accounts I cannot act for:
+
+1. **Firebase** — create a project, add an Android app with the id
+   `com.thebleedingdeacons.intergroup.hand`, and drop `google-services.json`
+   into `Platforms/Android/`. Then paste the service-account key file
+   (*Project settings → Service accounts → Generate new private key*) into
+   **Reach → Settings**. Without this everything still works by polling.
+2. **APNs** — create an APNs key in the Apple Developer portal and upload
+   it to Firebase, so FCM can deliver to iOS.
+3. **Critical alerts (optional)** — to break through the iOS silent switch
+   and Do Not Disturb you need Apple's
+   `com.apple.developer.usernotifications.critical-alerts` entitlement,
+   granted only on application. **Do not enable the switch in Reach's
+   settings until it is in the provisioning profile:** without the
+   entitlement Apple *rejects* the notification rather than downgrading it,
+   which would silence the very alerts it is meant to make louder. Until
+   then urgent alerts use the time-sensitive level, which gets through a
+   Focus mode.
+
+## Licence
+
+MIT (Modified).

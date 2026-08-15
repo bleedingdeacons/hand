@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="TheBleedingDeacons.Intergroup.Hand.Views.SignInPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
+    x:DataType="vm:SignInViewModel"
+    Title="Sign in">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24,40" Spacing="16">
+
+            <Label
+                Text="Hand"
+                FontSize="34"
+                FontAttributes="Bold"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="For certified telephone responders."
+                FontSize="14"
+                Opacity="0.7"
+                HorizontalOptions="Center"
+                Margin="0,0,0,12" />
+
+            <!-- Nothing works until the server address is set, so say so
+                 first rather than letting sign-in fail confusingly. -->
+            <Border
+                IsVisible="{Binding IsConfigured, Converter={toolkit:InvertedBoolConverter}}"
+                Padding="14"
+                BackgroundColor="#FFF4E5"
+                StrokeThickness="0">
+                <Label
+                    Text="No Reach server has been set for this handset yet. Ask your intergroup for the address, then add it in Settings."
+                    TextColor="#663C00"
+                    FontSize="13" />
+            </Border>
+
+            <Button Text="Continue with Google" HeightRequest="50"
+                    Command="{Binding SignInWithProviderCommand}" CommandParameter="google" />
+            <Button Text="Continue with Microsoft" HeightRequest="50"
+                    Command="{Binding SignInWithProviderCommand}" CommandParameter="microsoft" />
+            <Button Text="Continue with Apple" HeightRequest="50"
+                    Command="{Binding SignInWithProviderCommand}" CommandParameter="apple" />
+            <Button Text="Continue with Facebook" HeightRequest="50"
+                    Command="{Binding SignInWithProviderCommand}" CommandParameter="facebook" />
+
+            <Label
+                Text="or sign in with a password"
+                FontSize="13"
+                Opacity="0.6"
+                HorizontalOptions="Center"
+                Margin="0,12,0,0" />
+
+            <Entry
+                Placeholder="Email address"
+                Keyboard="Email"
+                Text="{Binding Email}" />
+
+            <Entry
+                Placeholder="Password"
+                IsPassword="True"
+                Text="{Binding Password}" />
+
+            <Button
+                Text="Sign in"
+                HeightRequest="50"
+                Command="{Binding SignInWithPasswordCommand}" />
+
+            <ActivityIndicator
+                IsRunning="{Binding IsBusy}"
+                IsVisible="{Binding IsBusy}"
+                HorizontalOptions="Center" />
+
+            <Label
+                Text="{Binding ErrorMessage}"
+                IsVisible="{Binding HasError}"
+                TextColor="#B3261E"
+                FontSize="14" />
+
+            <Label
+                Text="{Binding PermissionWarning}"
+                IsVisible="{Binding HasPermissionWarning}"
+                TextColor="#663C00"
+                FontSize="13" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

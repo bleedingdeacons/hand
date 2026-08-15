@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="TheBleedingDeacons.Intergroup.Hand.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
+    x:DataType="vm:SettingsViewModel"
+    Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
+
+            <Label Text="Signed in as" FontSize="13" Opacity="0.6" />
+            <Label Text="{Binding Responder}" FontSize="18" FontAttributes="Bold" />
+
+            <Label Text="{Binding DeliveryMode}" FontSize="13" Opacity="0.7" />
+
+            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+
+            <Label Text="Reach server address" FontSize="13" Opacity="0.6" />
+            <Entry
+                Placeholder="https://your-intergroup.example/"
+                Keyboard="Url"
+                Text="{Binding BaseUrl}" />
+
+            <Label Text="Check for alerts every (seconds)" FontSize="13" Opacity="0.6" />
+            <Entry
+                Keyboard="Numeric"
+                Text="{Binding PollSeconds}" />
+            <Label
+                Text="How often this handset asks Reach for alerts. On Windows and macOS there is no push, so this is how alerts arrive."
+                FontSize="12"
+                Opacity="0.6" />
+
+            <Label Text="Device name" FontSize="13" Opacity="0.6" />
+            <Entry
+                Placeholder="This handset"
+                Text="{Binding DeviceLabel}" />
+            <Label
+                Text="Shown in Reach&#8217;s admin list so an administrator can tell handsets apart."
+                FontSize="12"
+                Opacity="0.6" />
+
+            <Button Text="Save" HeightRequest="48" Command="{Binding SaveCommand}" />
+
+            <Label
+                Text="{Binding StatusMessage}"
+                FontSize="13"
+                Opacity="0.8" />
+
+            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+
+            <Button
+                Text="Sign out"
+                HeightRequest="48"
+                BackgroundColor="#B3261E"
+                TextColor="White"
+                Command="{Binding SignOutCommand}" />
+
+            <Label
+                Text="{Binding Build}"
+                FontSize="11"
+                Opacity="0.5"
+                HorizontalOptions="Center"
+                Margin="0,16,0,0" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

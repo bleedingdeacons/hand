@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="TheBleedingDeacons.Intergroup.Hand.Views.AlertsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:TheBleedingDeacons.Intergroup.Hand.Models"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
+    x:DataType="vm:AlertsViewModel"
+    Title="Hand">
+
+    <!--
+        The visual half of the alert. It is deliberately loud: a red field
+        filling the screen, readable from across a room and unmistakable
+        at a glance, because the person it is for may be looking at the
+        phone from two metres away in the dark.
+    -->
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0">
+
+        <!-- Status bar: who is on duty, and whether anything is waiting. -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Padding="16,14" ColumnSpacing="12">
+            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                <Label Text="{Binding StatusLine}" FontSize="18" FontAttributes="Bold" />
+                <Label Text="{Binding Responder}" FontSize="13" Opacity="0.7" />
+            </VerticalStackLayout>
+
+            <Switch
+                Grid.Column="1"
+                IsToggled="{Binding OnDuty}"
+                VerticalOptions="Center"
+                AutomationProperties.Name="On duty" />
+
+            <Button
+                Grid.Column="2"
+                Text="Settings"
+                FontSize="13"
+                Padding="12,6"
+                Command="{Binding OpenSettingsCommand}" />
+        </Grid>
+
+        <!-- Nothing outstanding. Said explicitly: a blank screen is
+             indistinguishable from an app that has stopped working. -->
+        <VerticalStackLayout
+            Grid.Row="1"
+            IsVisible="{Binding IsClear}"
+            VerticalOptions="Center"
+            HorizontalOptions="Center"
+            Spacing="10"
+            Padding="32">
+            <Label
+                Text="All clear"
+                FontSize="32"
+                HorizontalOptions="Center"
+                Opacity="0.55" />
+            <Label
+                Text="You will be alerted here, and your phone will ring, when something needs a responder."
+                FontSize="14"
+                HorizontalTextAlignment="Center"
+                Opacity="0.55" />
+        </VerticalStackLayout>
+
+        <RefreshView
+            Grid.Row="1"
+            IsVisible="{Binding HasAlerts}"
+            IsRefreshing="{Binding IsRefreshing}"
+            Command="{Binding RefreshCommand}">
+            <CollectionView ItemsSource="{Binding Alerts}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:HandAlert">
+                        <Border
+                            Margin="12,6"
+                            Padding="18"
+                            BackgroundColor="#B3261E"
+                            StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14" />
+                            </Border.StrokeShape>
+
+                            <VerticalStackLayout Spacing="8">
+                                <Label
+                                    Text="{Binding Title}"
+                                    TextColor="White"
+                                    FontSize="24"
+                                    FontAttributes="Bold" />
+
+                                <Label
+                                    Text="{Binding Body}"
+                                    TextColor="White"
+                                    FontSize="16"
+                                    IsVisible="{Binding Body, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <Label
+                                    Text="{Binding Reference}"
+                                    TextColor="White"
+                                    FontSize="13"
+                                    Opacity="0.85"
+                                    IsVisible="{Binding Reference, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <!-- Contact details are fetched only when
+                                     asked for: Reach audits every read, and
+                                     they are never in the push or the poll. -->
+                                <Button
+                                    Text="Show contact"
+                                    Margin="0,4,0,0"
+                                    BackgroundColor="Transparent"
+                                    TextColor="White"
+                                    BorderColor="White"
+                                    BorderWidth="1"
+                                    HeightRequest="44"
+                                    IsVisible="{Binding HasContact}"
+                                    IsEnabled="{Binding IsContactShown, Converter={toolkit:InvertedBoolConverter}}"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AlertsViewModel}}, Path=ShowContactCommand}"
+                                    CommandParameter="{Binding .}" />
+
+                                <ActivityIndicator
+                                    IsRunning="{Binding IsLoadingContact}"
+                                    IsVisible="{Binding IsLoadingContact}"
+                                    Color="White"
+                                    HorizontalOptions="Start" />
+
+                                <Label
+                                    Text="{Binding Contact}"
+                                    TextColor="White"
+                                    FontSize="18"
+                                    FontAttributes="Bold"
+                                    IsVisible="{Binding IsContactShown}" />
+
+                                <Button
+                                    Text="Acknowledge"
+                                    Margin="0,8,0,0"
+                                    BackgroundColor="White"
+                                    TextColor="#B3261E"
+                                    FontAttributes="Bold"
+                                    HeightRequest="52"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:AlertsViewModel}}, Path=AcknowledgeCommand}"
+                                    CommandParameter="{Binding .}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+
+        <Button
+            Grid.Row="2"
+            Text="Acknowledge all"
+            Margin="12"
+            HeightRequest="52"
+            IsVisible="{Binding HasAlerts}"
+            Command="{Binding AcknowledgeAllCommand}" />
+
+    </Grid>
+</ContentPage>

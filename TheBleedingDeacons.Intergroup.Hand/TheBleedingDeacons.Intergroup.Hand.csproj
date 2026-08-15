@@ -1,0 +1,244 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+		<!-- CI builds one head per job so neither runner needs the workloads for
+		     the others. Pass -p:HandAndroidOnly=true or -p:HandWindowsOnly=true.
+
+		     Do NOT reach for the -f (framework) option instead: that sets
+		     TargetFramework as a global property, which forces the chosen TFM onto
+		     any net10.0-only project in the tree and breaks its restore with
+		     NU1105. These flags narrow only this project's TargetFrameworks.
+
+		     Last so they win when set; a local build without either keeps the
+		     full set above. Same arrangement as Register. -->
+		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFrameworks>
+		<TargetFrameworks Condition="'$(HandWindowsOnly)' == 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>TheBleedingDeacons.Intergroup.Hand</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- Compile XAML bindings that set Source. See Register's csproj for the
+		     long version: a binding that silently falls back to reflection is both
+		     slower and unsafe under the full trimming iOS release builds use. -->
+		<MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
+		<WarningsAsErrors>$(WarningsAsErrors);XC0022;XC0023;XC0024;XC0025;XC0045</WarningsAsErrors>
+
+		<!-- Display name -->
+		<ApplicationTitle>Hand</ApplicationTitle>
+
+		<!-- App Identifier -->
+		<ApplicationId>com.thebleedingdeacons.intergroup.hand</ApplicationId>
+
+		<!--
+			Versions. ApplicationDisplayVersion must stay unconditional: it feeds
+			PackageVersion, which NuGet requires to have a single value across all
+			target frameworks. Version must be set here too and not left to the MAUI
+			targets — only the Android head derives it, so the Windows head would
+			otherwise sit at the default 1.0.0 and NuGet's cross-framework
+			consistency check fails the restore with NU1105 in Visual Studio.
+
+			Register learned both of these the hard way; see the long note in its
+			csproj before splitting these across per-configuration groups.
+		-->
+		<ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+		<Version>$(ApplicationDisplayVersion)</Version>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<!--
+			Platform floors, matching Register's .NET 10 values.
+
+			android 24: API 21-23 hit "desugaring" runtime crashes when a dependency
+			uses Java default interface methods.
+
+			ios/maccatalyst 15.0: what the .NET 10 templates use and what
+			CommunityToolkit.Maui is built against.
+		-->
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
+		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+		<DefaultLanguage>en-gb</DefaultLanguage>
+
+		<!-- Derived, not hand-written: Register had these stuck at an old value
+		     while the display version moved on, so the Windows head stamped the
+		     wrong version onto every log event. One number to bump. The trailing
+		     .0 makes the four-part version out of the three-part display string,
+		     so keep ApplicationDisplayVersion three-part. -->
+		<AssemblyVersion>$(ApplicationDisplayVersion).0</AssemblyVersion>
+		<FileVersion>$(ApplicationDisplayVersion).0</FileVersion>
+
+		<!--
+			When this build was made, to the second, stamped at build time.
+
+			InformationalVersion is the only one of the three that can hold it:
+			AssemblyVersion and FileVersion are four 16-bit fields capped at 65534
+			each, and a yyyyMMddHHmmss stamp is about 202 billion. Stamped UTC so
+			builds either side of a BST change still sort honestly; BuildInfo
+			converts to local time for display.
+
+			IncludeSourceRevisionInInformationalVersion is off because the SDK would
+			otherwise append '+<commit sha>' and the result would carry two '+'
+			segments — BuildInfo parses on the first one.
+		-->
+		<BuildTimestampUtc>$([System.DateTime]::UtcNow.ToString("yyyyMMddHHmmss"))</BuildTimestampUtc>
+		<InformationalVersion>$(ApplicationDisplayVersion)+$(BuildTimestampUtc)</InformationalVersion>
+		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+		<Platforms>AnyCPU</Platforms>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<UseDevCredentials Condition="'$(UseDevCredentials)' == ''">true</UseDevCredentials>
+		<DefineConstants Condition="'$(UseDevCredentials)' == 'true'">$(DefineConstants);USE_DEV_CREDENTIALS</DefineConstants>
+	</PropertyGroup>
+
+	<!--
+		Ship one ABI on Release. The Android SDK defaults RuntimeIdentifiers to
+		'android-arm64;android-x64', spending half the payload on an ABI only an
+		emulator loads. Debug keeps both so emulator debugging is unaffected; to
+		install a Release build on an emulator, pass
+		-p:RuntimeIdentifiers="android-arm64;android-x64".
+
+		Deliberately not in a group conditioned on $(Platform): Visual Studio
+		evaluates that as 'Any CPU' — with a space — so such a group silently
+		misses there. GetTargetPlatformIdentifier has no such trap.
+	-->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
+
+		<!-- Sign only when a keystore is actually supplied. An unconditional
+		     AndroidKeyStore=True fires as XA4310 on any plain `dotnet publish
+		     -c Release`; naming a keystore is the opt-in, and a named-but-missing
+		     one still fails loudly rather than emitting an unsigned APK. -->
+		<AndroidKeyStore Condition="'$(AndroidKeyStore)' == '' and '$(AndroidSigningKeyStore)' != ''">true</AndroidKeyStore>
+		<AndroidKeyStore Condition="'$(AndroidKeyStore)' == ''">false</AndroidKeyStore>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#B3261E" />
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#B3261E" BaseSize="128,128" />
+		<MauiImage Include="Resources\Images\*" />
+		<MauiFont Include="Resources\Fonts\*" />
+		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<!--
+		The alarm sound.
+
+		Android resolves it from res/raw by bare name, so it is an
+		AndroidResource rather than a MauiAsset — a MauiAsset lands in the
+		assets/ folder, where a notification channel cannot reach it, and the
+		channel would silently fall back to the default notification tone.
+
+		iOS resolves it from the bundle root by filename, and requires CAF, AIFF
+		or WAV of 30 seconds or less; anything else plays as silence, which is
+		the one failure this app cannot tolerate. The same linear-PCM WAV serves
+		both heads, which keeps a Mac (afconvert) out of the asset pipeline.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<AndroidResource Include="Resources\Raw\reach_alert.wav" Link="Resources\raw\reach_alert.wav" />
+	</ItemGroup>
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
+		<BundleResource Include="Resources\Raw\reach_alert.wav" Link="reach_alert.wav" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="appsettings.json" />
+		<None Remove="appsettings.json" />
+	</ItemGroup>
+
+	<!-- Dev credentials: only embedded when UseDevCredentials=true (the default).
+	     Production builds pass -p:UseDevCredentials=false so this file is never
+	     touched and cannot leak into the package. -->
+	<ItemGroup Condition="'$(UseDevCredentials)' == 'true'">
+		<EmbeddedResource Include="devsettings.json" Condition="Exists('devsettings.json')" />
+		<None Remove="devsettings.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.10" />
+		<PackageReference Include="CommunityToolkit.Maui" Version="15.0.0" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Serilog" Version="4.4.0" />
+		<PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
+		<PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+		<PackageReference Include="Serilog.Sinks.Debug" Version="3.0.0" />
+		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+		<!--
+			Durable HTTP sink so log events survive loss of internet and hard app
+			kills. Events are written to a rolling on-disk buffer first, then
+			shipped to Better Stack in the background; offline, the buffer just
+			grows until connectivity returns. Support/BetterStackDurable/*.cs is
+			the thin glue layer (auth header + NDJSON formatter). Carried over
+			from Register wholesale — a duty handset that loses its diagnostics
+			the moment it goes out of signal is worse than useless, and out of
+			signal is exactly when it will misbehave.
+		-->
+		<PackageReference Include="Serilog.Sinks.Http" Version="9.2.1" />
+		<PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+		<PackageReference Include="SonarAnalyzer.CSharp" Version="10.31.0.145097">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<!-- Firebase Cloud Messaging, mobile heads only. Windows and macOS have no
+	     FCM coverage and poll instead, so the binding is not referenced there —
+	     it would be dead weight in the package and an extra restore for a
+	     platform that cannot use it. -->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.1" />
+	</ItemGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<PackageReference Include="System.Net.Http.WinHttpHandler" Version="10.0.10" />
+	</ItemGroup>
+
+	<!--
+		Code shared by the two Apple heads.
+
+		AVFoundation, UserNotifications and the audio-session handling are
+		identical on iOS and Mac Catalyst, so these live once in Apple/ and
+		compile into both.
+
+		<b>The folder is deliberately NOT under Platforms/.</b> MAUI applies
+		its per-platform exclusions from a .targets file imported after the
+		project body, as a blanket remove over Platforms/** followed by a
+		re-add of the current platform's own folder. Anything else under
+		Platforms/ — a shared "Apple" folder, or a linked file pointing into
+		Platforms/iOS — is therefore stripped again after this project file
+		has had its say, whatever order the ItemGroups are written in. That
+		failure is quiet in the worst way: the partial methods simply have no
+		implementation and the build reports CS8795 against the shared half,
+		pointing nowhere near the actual cause.
+
+		Outside Platforms/, nothing but the two ItemGroups below touches
+		these files: the first takes them out of the default glob, the second
+		puts them back exactly once and only where the frameworks exist.
+	-->
+	<ItemGroup>
+		<Compile Remove="Apple\**\*.cs" />
+	</ItemGroup>
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
+		<Compile Include="Apple\**\*.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<MauiXaml Update="Views\**\*.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</MauiXaml>
+	</ItemGroup>
+
+</Project>

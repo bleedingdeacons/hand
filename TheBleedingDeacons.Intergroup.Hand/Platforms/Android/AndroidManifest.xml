@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"></application>
+
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+	<uses-permission android:name="android.permission.INTERNET" />
+
+	<!--
+		Runtime permission on Android 13+. Without it the handset cannot
+		alert a responder while the app is closed, which is most of the
+		point of the app — so it is asked for explicitly at sign-in and the
+		answer is surfaced rather than swallowed.
+	-->
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+	<!--
+		Turns an alert into an incoming call: the system launches the
+		activity over the lock screen rather than showing a heads-up
+		banner. Android 14 restricts this to apps whose core function is
+		calling or alarms — which this is — and grants it by default for
+		them, revocable by the user. A revoked permission degrades to a
+		heads-up notification, which still sounds.
+	-->
+	<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+	<!-- The alarm needs to sound and shake with the screen off. -->
+	<uses-permission android:name="android.permission.VIBRATE" />
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+
+	<!--
+		Lets the app ask to be exempted from battery optimisation. OEM
+		battery managers are the main reason a data push fails to wake an
+		app on some handsets, and a duty phone that sleeps through the
+		helpline is the failure this app exists to prevent. Asking is
+		optional and the poll covers a refusal.
+	-->
+	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+	<!-- Restarts the poll after a reboot, so a handset left on the rota
+	     overnight is still listening in the morning. -->
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+</manifest>
