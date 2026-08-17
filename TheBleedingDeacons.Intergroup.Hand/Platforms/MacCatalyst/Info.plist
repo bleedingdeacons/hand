@@ -36,5 +36,24 @@
 	</array>
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/appicon.appiconset</string>
+	<!--
+		Claims the hand:// scheme so macOS routes the SSO redirect back
+		into the app. Without it ASWebAuthenticationSession has nowhere to
+		return to and sign-in hangs on the sheet. Must match
+		ReachClient.CallbackScheme and Reach's DeviceRedirectValidator.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.thebleedingdeacons.intergroup.hand</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hand</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
