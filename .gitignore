@@ -482,3 +482,13 @@ Properties/launchSettings.json
 # Register works around that by having CI write a {} placeholder; there is
 # nothing here worth hiding, so the file itself is simply tracked.
 !TheBleedingDeacons.Intergroup.Hand/appsettings.json
+
+# launchSettings.json is normally ignored (line 427) because it usually
+# holds developer-local settings - ports, environment variables, machine
+# paths. Hand's holds neither: it is the two launch profiles the Windows
+# head needs to be debuggable at all. Without the MsixPackage profile,
+# Visual Studio refuses to start that head with "launchSettings.json does
+# not contain a profile with commandName 'MsixPackage'", so a fresh clone
+# cannot debug Windows until someone works out what to write. Register
+# tracks its copy for the same reason.
+!TheBleedingDeacons.Intergroup.Hand/Properties/launchSettings.json
