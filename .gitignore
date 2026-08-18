@@ -497,3 +497,17 @@ Properties/launchSettings.json
 # cannot debug Windows until someone works out what to write. Register
 # tracks its copy for the same reason.
 !TheBleedingDeacons.Intergroup.Hand/Properties/launchSettings.json
+
+# google-services.json is ignored by default.
+#
+# Google's position is that it is not a secret - it ships inside every
+# APK, so anyone with the app already has it - and plenty of projects
+# commit it. The Android API key inside it is meant to be constrained by
+# package name and signing certificate rather than by being hidden.
+#
+# It is ignored here anyway, in the fail-safe direction: this repo is
+# public, the file is per-project configuration a fork should not inherit,
+# and the build treats it as optional. Un-ignore it deliberately if you
+# would rather CI produce a push-capable APK - and check the key's
+# restrictions in the Google Cloud console first.
+TheBleedingDeacons.Intergroup.Hand/Platforms/Android/google-services.json
