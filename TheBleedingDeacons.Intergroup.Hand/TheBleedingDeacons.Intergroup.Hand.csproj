@@ -150,8 +150,20 @@
 		<BundleResource Include="Resources\Raw\reach_alert.wav" Link="reach_alert.wav" />
 	</ItemGroup>
 
+	<!--
+		appsettings.json is NOT in the repository, and the build must not
+		require it. It is the production settings file, so it is where real
+		values get typed - a Better Stack token was once committed through it
+		to a public repo - and it is therefore ignored. Copy
+		appsettings.example.json to appsettings.json and fill it in.
+
+		Conditional rather than mandatory: MauiProgram already handles the
+		resource being absent (it logs which resources it did find and carries
+		on with defaults), so a checkout without the file builds and runs. A
+		hard reference would fail the build on a fresh clone and on CI.
+	-->
 	<ItemGroup>
-		<EmbeddedResource Include="appsettings.json" />
+		<EmbeddedResource Include="appsettings.json" Condition="Exists('appsettings.json')" />
 		<None Remove="appsettings.json" />
 	</ItemGroup>
 

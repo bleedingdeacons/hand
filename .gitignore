@@ -465,23 +465,28 @@ Properties/launchSettings.json
 *.p12
 *.pfx
 
-# ── Hand-specific ────────────────────────────────────────────────────
+# ── Hand-specific ───────────────────────────────────────────
 #
-# The rules above came from Register wholesale and ignore appsettings.json
-# along with devsettings.json. That is right for one of them and wrong for
-# the other here.
+# appsettings.json and devsettings.json both stay ignored (the inherited
+# rules above already cover them). BOTH carry real configuration on a
+# working machine.
 #
-# devsettings.json stays ignored: it carries the Better Stack source token
-# and any other real credential, and is only embedded when a build passes
-# UseDevCredentials=true.
+# appsettings.json was briefly tracked here, on the reasoning that the
+# committed copy held nothing but an app name and Serilog levels so a
+# fresh clone could build. That reasoning was correct about the file at
+# that moment and wrong about the file over time: it is the production
+# settings file, so the first person to configure the app for real put a
+# Better Stack source token in it, and the next `git add -A` published
+# that token to a public repository.
 #
-# appsettings.json is committed. It holds no secrets — the app name, the
-# environment label, an empty default server address and Serilog levels —
-# and the csproj embeds it unconditionally, so without the file MSBuild
-# fails before anything runs and a fresh clone cannot be built at all.
-# Register works around that by having CI write a {} placeholder; there is
-# nothing here worth hiding, so the file itself is simply tracked.
-!TheBleedingDeacons.Intergroup.Hand/appsettings.json
+# A file that is safe to commit *today* and is also where credentials
+# naturally get typed is not safe to commit. The build no longer requires
+# it - the EmbeddedResource is conditional and MauiProgram already logs a
+# warning and carries on when the resource is absent - so there is
+# nothing left to trade off.
+#
+# appsettings.example.json is tracked instead: same shape, no values.
+!TheBleedingDeacons.Intergroup.Hand/appsettings.example.json
 
 # launchSettings.json is normally ignored (line 427) because it usually
 # holds developer-local settings - ports, environment variables, machine
