@@ -20,13 +20,30 @@ what each platform can actually do.
 | Head | With the app open | With the app closed |
 | --- | --- | --- |
 | **Android** | Looping alarm on the alarm audio stream, vibration, full-screen alert | **Yes.** A data-only FCM message wakes the app, which raises a full-screen-intent notification on an alarm-category channel. The handset behaves like an incoming call, over the lock screen. |
-| **iOS** | Looping alarm (audio session set to `Playback`, so it sounds through the silent switch) | **Yes, for up to 30 seconds.** A terminated app runs no code, so the sound is named in the APNs payload and played by the system. See *Critical alerts* below. |
+| **iOS** | Looping alarm (audio session set to `Playback`, so it sounds through the silent switch) | **Not yet — see Known gaps.** The design is a 30-second system-played sound named in the APNs payload, but push is disabled on this head until the Firebase iOS SDK is in place. iOS handsets currently enrol poll-only. |
 | **Windows / macOS** | Looping alarm, toast with alarm scenario | **Only while resident.** FCM does not cover these platforms and nothing can wake a terminated process, so Hand runs from login and stays in the tray, polling. "Closed" means not on screen. |
 
 Push is the fast path, not the reliable one. Every alert is stored by
 Reach before any push is attempted, and every handset polls as well as
 listening — so a phone in a tunnel catches up when it surfaces, and a
 handset whose FCM token has silently rotated still gets its alerts.
+
+## Known gaps
+
+**iOS and Mac Catalyst do not receive push yet.** `PushRegistrar` on those
+heads can obtain an *APNs device token*, but Reach sends through FCM and
+`message.token` requires an *FCM registration token* — a different
+identifier, which FCM rejects. Producing one needs the Firebase iOS SDK,
+which is not referenced yet.
+
+Rather than enrol a handset that looks push-capable and silently never
+rings, the Apple heads report no transport and enrol **poll-only**. Alerts
+still arrive while the app is running; they will not wake a closed app.
+Android is unaffected and is the head being proven first.
+
+To close it: add `Xamarin.Firebase.iOS.CloudMessaging`, configure Firebase
+in `AppDelegate`, and return `Fcm` plus `Messaging.SharedInstance.FcmToken`
+from `PushRegistrar`. The APNs registration plumbing is already written.
 
 ## Who can use it
 
@@ -70,7 +87,14 @@ Build-time configuration follows Register's arrangement: `appsettings.json`
 is embedded, and `devsettings.json` is layered on top when built with
 `UseDevCredentials=true` (the default). Production builds pass
 `-p:UseDevCredentials=false`, so real credentials cannot reach a shipped
-package. Both files are git-ignored.
+package.
+
+**Both files are git-ignored, and neither is required to build.** Copy
+`appsettings.example.json` to `appsettings.json` and fill it in. The
+example is the only one tracked: `appsettings.json` is the production
+settings file, so it is where real values get typed — a Better Stack
+token was once committed through it to this public repo, which is why the
+build now treats it as optional rather than tracking it.
 
 ## Logging
 

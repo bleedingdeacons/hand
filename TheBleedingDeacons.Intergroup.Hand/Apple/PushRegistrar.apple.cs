@@ -12,11 +12,28 @@ namespace TheBleedingDeacons.Intergroup.Hand.Services;
 /// registration is requested. The delegate stashes it in
 /// <see cref="DeviceToken"/>, and this waits briefly for it to appear.</para>
 ///
-/// <para>The value is the APNs device token. Reach sends through FCM,
-/// which maps APNs tokens to its own registration tokens when the
-/// Firebase iOS SDK is present; a build without that SDK reports no
-/// token and polls instead, which is a degraded handset rather than a
-/// broken one.</para>
+/// <para><b>Push is currently disabled on the Apple heads, deliberately.</b>
+/// What the delegate receives is an <i>APNs device token</i>, but Reach
+/// sends through FCM and <c>message.token</c> requires an <i>FCM
+/// registration token</i>. They are different identifiers; FCM rejects
+/// an APNs token outright. Producing an FCM token needs the Firebase
+/// iOS SDK in the app, which is not referenced yet.</para>
+///
+/// <para>So <see cref="PlatformProvider"/> reports no transport rather
+/// than claiming FCM. Reporting FCM would be worse than reporting
+/// nothing: the handset would enrol looking push-capable, Reach's admin
+/// list would show it as "Push", the dispatcher would spend a send on it
+/// for every alert, and every one of those would fail — while the
+/// responder had been told their phone would ring with the app closed.
+/// Poll-only is a degraded handset; a handset that lies about being
+/// push-capable is a broken promise.</para>
+///
+/// <para>To enable: add <c>Xamarin.Firebase.iOS.CloudMessaging</c>,
+/// configure Firebase in <c>AppDelegate</c>, return <c>Fcm</c> from
+/// <see cref="PlatformProvider"/>, and read
+/// <c>Messaging.SharedInstance.FcmToken</c> below instead of
+/// <see cref="DeviceToken"/>. The registration plumbing here already
+/// works and is what supplies APNs the token Firebase needs.</para>
 /// </summary>
 public sealed partial class PushRegistrar
 {
@@ -26,7 +43,11 @@ public sealed partial class PushRegistrar
 	/// </summary>
 	public static string DeviceToken { get; set; } = string.Empty;
 
-	private partial string PlatformProvider() => Fcm;
+	// Empty means "no push transport, poll instead". See the class
+	// docblock: an APNs token is not an FCM token, so claiming FCM here
+	// would enrol a handset that can never be pushed to. Return Fcm once
+	// the Firebase iOS SDK is supplying a real registration token.
+	private partial string PlatformProvider() => string.Empty;
 
 	private async partial Task<string> PlatformGetTokenAsync()
 	{
