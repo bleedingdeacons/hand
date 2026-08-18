@@ -228,7 +228,12 @@ public static class MauiProgram
 			// sandbox name on iOS, so a user-set label with a platform-aware
 			// default is what actually distinguishes handsets in the live tail.
 			.Enrich.WithProperty("DeviceLabel", ResolveDeviceLabel())
-			.Enrich.With<ExceptionEnricher>();
+			.Enrich.With<ExceptionEnricher>()
+			// Part of the base pipeline, so it survives every reconfigure and
+			// every rebuild. See FlushOnErrorSink: an error on a handset in
+			// somebody's pocket should not wait for the shipper's timer, or for
+			// the responder to next open the app.
+			.WriteTo.Sink(new FlushOnErrorSink());
 
 #if DEBUG
 		cfg = cfg
@@ -348,6 +353,20 @@ public static class MauiProgram
 			try
 			{
 				Log.Error(args.Exception, "Unobserved task exception");
+			}
+			catch
+			{
+				// Never throw from a crash handler.
+			}
+
+			// Deliberately NOT TryFlushLogs() here. The app survives an
+			// unobserved task exception, and CloseAndFlush would leave it
+			// running with logging switched off for the rest of the session -
+			// trading one silent failure for a worse one. The non-destructive
+			// flush ships the event and keeps the pipeline alive.
+			try
+			{
+				BetterStackLoggerController.Current?.Flush();
 			}
 			catch
 			{

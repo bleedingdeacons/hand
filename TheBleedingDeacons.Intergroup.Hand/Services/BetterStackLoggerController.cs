@@ -34,12 +34,71 @@ public sealed class BetterStackLoggerController : IBetterStackLoggerController
 	// keep until we've installed a replacement.
 	private Logger? _currentLogger;
 
+	/// <summary>
+	/// The configuration the live pipeline was built from, so {@see Flush}
+	/// can rebuild an identical one rather than needing it passed in.
+	/// </summary>
+	private BetterStackConfiguration? _lastConfig;
+
+	/// <summary>When the last forced flush ran, for debouncing.</summary>
+	private DateTimeOffset _lastFlush = DateTimeOffset.MinValue;
+
+	/// <summary>
+	/// Shortest gap between forced flushes. A fault rarely arrives alone —
+	/// one failure often logs an error from several layers on the way up —
+	/// and rebuilding the pipeline once per event would cost more than the
+	/// promptness is worth.
+	/// </summary>
+	private static readonly TimeSpan FlushDebounce = TimeSpan.FromSeconds(5);
+
+	/// <summary>
+	/// The live controller, for callers that cannot be given one.
+	///
+	/// <para>Specifically <see cref="FlushOnErrorSink"/>: it is constructed
+	/// by the logger factory, which runs before the DI container exists, so
+	/// it cannot be injected. A static handle is the smaller evil against
+	/// making the logging pipeline depend on service resolution order.</para>
+	/// </summary>
+	public static IBetterStackLoggerController? Current { get; private set; }
+
 	public BetterStackLoggerController(
 		Func<LoggerConfiguration> baseLoggerFactory,
 		HttpClient httpClient)
 	{
 		_baseLoggerFactory = baseLoggerFactory ?? throw new ArgumentNullException(nameof(baseLoggerFactory));
 		_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+
+		Current = this;
+	}
+
+	public void Flush()
+	{
+		BetterStackConfiguration? config;
+
+		lock (_gate)
+		{
+			config = _lastConfig;
+			if (config is null)
+			{
+				// Nothing has been configured yet, so there is no durable sink
+				// holding anything back.
+				return;
+			}
+
+			var now = DateTimeOffset.UtcNow;
+			if (now - _lastFlush < FlushDebounce)
+			{
+				return;
+			}
+
+			_lastFlush = now;
+		}
+
+		// Disposing the pipeline is what flushes the durable sink
+		// (flushOnClose), and Reconfigure disposes the old one only after the
+		// replacement is installed - so there is no window in which
+		// Log.Logger points at nothing.
+		Reconfigure(config);
 	}
 
 	public void Reconfigure(BetterStackConfiguration config)
@@ -98,6 +157,7 @@ public sealed class BetterStackLoggerController : IBetterStackLoggerController
 			// endpoint has changed.
 			oldLogger = _currentLogger;
 			_currentLogger = newLogger;
+			_lastConfig = config;
 			Log.Logger = newLogger;
 
 			// Enable SelfLog so sink setup errors from the *new* logger are

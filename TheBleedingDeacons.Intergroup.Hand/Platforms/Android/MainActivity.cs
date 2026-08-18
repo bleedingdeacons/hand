@@ -46,4 +46,36 @@ public class MainActivity : MauiAppCompatActivity
 			SetTurnScreenOn(true);
 		}
 	}
+
+	/// <summary>
+	/// Ship the log buffer when the app leaves the foreground.
+	/// </summary>
+	/// <remarks>
+	/// <para>This is the last moment Android reliably gives us. A
+	/// backgrounded app can be killed at any time for memory, by an OEM
+	/// battery manager, or by the user swiping it away, and none of those
+	/// raise <c>Destroying</c> on the MAUI window - so the flush wired
+	/// there never runs. On a duty handset, backgrounded is the app's
+	/// normal state, which makes this the common path rather than an edge
+	/// case.</para>
+	///
+	/// <para>Non-destructive: the responder is still on duty and the app
+	/// may well come back, so the pipeline is flushed and rebuilt rather
+	/// than closed. Anything still buffered survives on disk regardless
+	/// and ships on the next launch; this is about arriving tonight
+	/// instead of whenever the app is next opened.</para>
+	/// </remarks>
+	protected override void OnStop()
+	{
+		try
+		{
+			Services.BetterStackLoggerController.Current?.Flush();
+		}
+		catch
+		{
+			// Never let logging interfere with the activity lifecycle.
+		}
+
+		base.OnStop();
+	}
 }

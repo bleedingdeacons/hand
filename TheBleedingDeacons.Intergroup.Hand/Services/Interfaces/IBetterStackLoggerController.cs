@@ -32,4 +32,32 @@ public interface IBetterStackLoggerController
 	/// Safe to call from any thread.
 	/// </summary>
 	void Reconfigure(BetterStackConfiguration config);
+
+	/// <summary>
+	/// Ship whatever is sitting in the durable buffer, now, without
+	/// tearing logging down.
+	/// </summary>
+	/// <remarks>
+	/// <para>The durable sink writes each event to its on-disk buffer as it
+	/// is emitted, so nothing is ever <i>lost</i> — a handset that dies
+	/// mid-shift ships its backlog on the next launch. What can be delayed
+	/// is <i>arrival</i>: the shipper runs on a timer, so an error can sit
+	/// on the phone for the length of that period, and if the process is
+	/// killed in between it stays there until the app is next opened. On a
+	/// duty handset that is the difference between seeing a fault tonight
+	/// and seeing it whenever the responder next happens to sign in.</para>
+	///
+	/// <para>Distinct from <c>Log.CloseAndFlush()</c>, which also flushes
+	/// but leaves the pipeline dead. That is correct on a crash path, where
+	/// the process is going away regardless, and wrong everywhere else —
+	/// an unobserved task exception does not end the app, and silently
+	/// disabling its logging afterwards would be a poor trade. This
+	/// disposes the pipeline (which flushes it) and immediately rebuilds
+	/// it, so logging continues.</para>
+	///
+	/// <para>Debounced internally: a burst of errors triggers one flush,
+	/// not one per event. Safe to call from any thread, including from
+	/// inside a sink.</para>
+	/// </remarks>
+	void Flush();
 }
