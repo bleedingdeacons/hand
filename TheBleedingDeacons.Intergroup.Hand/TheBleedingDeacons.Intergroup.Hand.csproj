@@ -200,6 +200,23 @@
 	     platform that cannot use it. -->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
 		<PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.1" />
+
+		<!--
+			The Firebase project configuration, downloaded from the Firebase
+			console. The GoogleServicesJson build action is what matters: it is
+			what processes the file into the app so FirebaseMessaging can find
+			its project at runtime. Merely having the file in the folder does
+			nothing.
+
+			Conditioned on the file existing so a checkout without it still
+			builds. That is a real configuration, not a broken one - without
+			Firebase, GetToken() fails, PushRegistrar reports no transport, and
+			the handset enrols as poll-only. Alerts still arrive, just at the
+			poll interval rather than instantly, and a phone with the app closed
+			will not ring. Failing the build instead would make CI depend on a
+			file that cannot be committed to a public repository.
+		-->
+		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('Platforms\Android\google-services.json')" />
 	</ItemGroup>
 
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
