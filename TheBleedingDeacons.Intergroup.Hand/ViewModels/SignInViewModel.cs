@@ -111,11 +111,30 @@ public sealed partial class SignInViewModel : ObservableObject
 			// Ask for notification permission only after a successful sign-in.
 			// The prompt makes sense once a responder has committed to using
 			// the app, and iOS gives exactly one chance to ask.
-			if (!await _presenter.RequestPermissionsAsync().ConfigureAwait(false))
+			//
+			// Guarded separately, and this matters more than it looks. By this
+			// point enrolment has already succeeded on the server: the handset
+			// exists, the token is stored, and the responder is signed in. If
+			// anything here threw it would fall into the catch below and be
+			// reported as "something went wrong signing in" — leaving them on
+			// this screen, believing they had failed, tapping again and
+			// enrolling a second handset against the same person. Whether the
+			// permission prompt worked has no bearing on whether sign-in did.
+			try
 			{
+				if (!await _presenter.RequestPermissionsAsync().ConfigureAwait(false))
+				{
+					PermissionWarning =
+						"Notifications are turned off for Hand. Alerts will only sound while the app is open — "
+						+ "turn notifications on in your device settings so you are alerted when it is closed.";
+				}
+			}
+			catch (Exception ex)
+			{
+				Log.Error(ex, "Notification permission could not be requested");
 				PermissionWarning =
-					"Notifications are turned off for Hand. Alerts will only sound while the app is open — "
-					+ "turn notifications on in your device settings so you are alerted when it is closed.";
+					"Hand could not check its notification permission. Alerts may only sound while the app is "
+					+ "open — check notifications are turned on for Hand in your device settings.";
 			}
 
 			await _alerts.StartAsync().ConfigureAwait(false);

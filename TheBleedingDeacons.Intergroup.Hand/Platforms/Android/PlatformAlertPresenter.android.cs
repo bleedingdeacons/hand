@@ -34,13 +34,25 @@ public sealed partial class PlatformAlertPresenter
 			return true;
 		}
 
-		var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>().ConfigureAwait(false);
-		if (status != PermissionStatus.Granted)
+		// Marshalled to the main thread, and marshalled *here* rather than
+		// left to the caller. MAUI throws PermissionException("Permission
+		// request must be invoked on main thread") otherwise, because the
+		// platform call raises a system dialog against the current activity.
+		// Everything upstream is async service code on the thread pool, and
+		// an await with ConfigureAwait(false) anywhere in that chain is
+		// enough to land here off-thread — so requiring callers to remember
+		// would be a trap that only fires on Android 13+, only on a first
+		// sign-in, and only on a real device.
+		return await MainThread.InvokeOnMainThreadAsync(async () =>
 		{
-			status = await Permissions.RequestAsync<Permissions.PostNotifications>().ConfigureAwait(false);
-		}
+			var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
+			if (status != PermissionStatus.Granted)
+			{
+				status = await Permissions.RequestAsync<Permissions.PostNotifications>();
+			}
 
-		return status == PermissionStatus.Granted;
+			return status == PermissionStatus.Granted;
+		}).ConfigureAwait(false);
 	}
 
 	private partial Task PlatformPresentAsync(HandAlert alert)
