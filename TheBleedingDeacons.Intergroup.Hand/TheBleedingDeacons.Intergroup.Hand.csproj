@@ -3,8 +3,15 @@
 	<PropertyGroup>
 		<TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
-		<!-- CI builds one head per job so neither runner needs the workloads for
-		     the others. Pass -p:HandAndroidOnly=true or -p:HandWindowsOnly=true.
+		<!-- CI builds one platform family per job, so no runner needs the
+		     workloads for the others. Pass -p:HandAndroidOnly=true,
+		     -p:HandWindowsOnly=true or -p:HandAppleOnly=true.
+
+		     HandAppleOnly covers both Apple heads rather than splitting them: they
+		     need the same runner and share almost all of their code (Apple/**\*.cs
+		     compiles into both), and macOS runners are the slow, contended ones.
+		     MSBuild tags every diagnostic with its TargetFramework, so building the
+		     pair together still says which head broke.
 
 		     Do NOT reach for the -f (framework) option instead: that sets
 		     TargetFramework as a global property, which forces the chosen TFM onto
@@ -15,6 +22,7 @@
 		     full set above. Same arrangement as Register. -->
 		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFrameworks>
 		<TargetFrameworks Condition="'$(HandWindowsOnly)' == 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
+		<TargetFrameworks Condition="'$(HandAppleOnly)' == 'true'">net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 
 		<OutputType>Exe</OutputType>
 		<RootNamespace>TheBleedingDeacons.Intergroup.Hand</RootNamespace>
