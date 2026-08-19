@@ -132,7 +132,12 @@
 
 	<ItemGroup>
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#B3261E" />
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#B3261E" BaseSize="128,128" />
+		<!-- Splash matches Register's: same artwork, same background. The two
+		     apps are the same suite on the same handsets, so a responder
+		     opening one should not think they opened the other. The alert red
+		     is still Hand's own, but it belongs on the alert screen rather
+		     than on the thing shown at every launch. -->
+		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#3977C3" BaseSize="128,128" />
 		<MauiImage Include="Resources\Images\*" />
 		<MauiFont Include="Resources\Fonts\*" />
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
