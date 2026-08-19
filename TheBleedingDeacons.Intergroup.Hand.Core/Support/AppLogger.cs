@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace TheBleedingDeacons.Intergroup.Hand.Support
 {
-	[Obsolete("Use Serilog directly instead of this wrapper class.")]
+    [Obsolete("Use Serilog directly instead of this wrapper class.")]
     public static class AppLogger
     {
         public static void Debug(string message, params object[] args) => Log.Debug(message, args);
