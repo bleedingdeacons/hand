@@ -132,6 +132,11 @@ public static class MauiProgram
 		// navigating afterwards must not silence it.
 		builder.Services.AddSingleton<IAlertAlarm, AlertAlarm>();
 
+		// The UI-thread seam AlertService marshals through. Stateless, so a
+		// singleton costs nothing; registered next to its only consumer so
+		// the pair is obvious.
+		builder.Services.AddSingleton<IUiDispatcher, MainThreadDispatcher>();
+
 		// Singleton, and the only thing that talks to the alert endpoints:
 		// it owns the poll timer and the de-duplication of alerts arriving by
 		// both push and poll, neither of which survives being rebuilt per page.

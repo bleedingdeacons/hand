@@ -188,6 +188,17 @@
 		<None Remove="devsettings.json" />
 	</ItemGroup>
 
+	<!--
+		The MAUI-free half of the app. Split out so it can be unit tested:
+		nothing can reference a project whose only target frameworks are
+		platform heads, so the testable code lives in a plain net10.0
+		library and the app consumes it from there. See that project's own
+		file for what belongs on each side of the line.
+	-->
+	<ItemGroup>
+		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.Core\TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />

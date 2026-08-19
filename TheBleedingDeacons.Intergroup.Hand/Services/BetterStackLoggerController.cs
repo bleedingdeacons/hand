@@ -54,10 +54,11 @@ public sealed class BetterStackLoggerController : IBetterStackLoggerController
 	/// <summary>
 	/// The live controller, for callers that cannot be given one.
 	///
-	/// <para>Specifically <see cref="FlushOnErrorSink"/>: it is constructed
-	/// by the logger factory, which runs before the DI container exists, so
-	/// it cannot be injected. A static handle is the smaller evil against
-	/// making the logging pipeline depend on service resolution order.</para>
+	/// <para>Specifically <see cref="Support.FlushOnErrorSink"/>: it is
+	/// constructed by the logger factory, which runs before the DI
+	/// container exists, so it cannot be injected. A static handle is the
+	/// smaller evil against making the logging pipeline depend on service
+	/// resolution order.</para>
 	/// </summary>
 	public static IBetterStackLoggerController? Current { get; private set; }
 
