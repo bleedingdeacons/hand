@@ -41,6 +41,13 @@ public sealed class ReachClient : IReachClient
 	{
 		PropertyNameCaseInsensitive = true,
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+
+		// PHP does not distinguish an integer from its decimal spelling, and
+		// WordPress hands plenty of both back from post meta — `"id":"42"`
+		// and `"id":42` are the same value to the server. Refusing the
+		// quoted one would lose the whole response over a difference that
+		// carries no meaning.
+		NumberHandling = JsonNumberHandling.AllowReadingFromString,
 	};
 
 	private readonly HttpClient _httpClient;
