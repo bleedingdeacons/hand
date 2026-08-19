@@ -159,8 +159,10 @@ loads. Signing is opt-in: pass a keystore or the build stays unsigned.
 
 ### The quality gate
 
-CI builds every head this project declares — Android, Windows, iOS and Mac
-Catalyst — on every push and pull request, and that build *is* the gate. `Directory.Build.props` wires in StyleCop.Analyzers
+CI builds the Android head on every push and pull request, and that build *is*
+the gate. The Windows and Apple heads have jobs of their own, currently gated
+to a manual run (Actions → CI → Run workflow) so an ordinary push pays for one
+runner rather than three. `Directory.Build.props` wires in StyleCop.Analyzers
 and Meziantou.Analyzer, `.editorconfig` escalates the rules that matter to
 `error`, and the csproj promotes the compiled-binding warnings (XC0022–XC0045)
 alongside them — so a style violation or a binding that quietly fell back to
@@ -180,6 +182,11 @@ One job per platform family, not per head: `-p:HandAppleOnly=true` builds iOS
 and Mac Catalyst together, since they need the same runner and share nearly all
 their code. MSBuild tags each diagnostic with its target framework, so the log
 still says which head broke.
+
+**Run the manual jobs before anything ships.** Gating them is a speed trade,
+not a judgement that they stopped mattering — the reasoning above is exactly
+why they exist, and the Apple job is the only thing anywhere that compiles
+`Apple/**/*.cs`.
 
 The macOS job signs nothing and needs no provisioning profile — a Debug build
 with no `RuntimeIdentifier` targets the simulator.

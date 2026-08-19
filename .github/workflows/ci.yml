@@ -39,8 +39,23 @@ name: CI
 #    belongs here alongside these, in the shape of Register's — xUnit v3 on
 #    Microsoft.Testing.Platform, coverlet.console for coverage, Coveralls upload.
 #
-# Every head this project declares is now gated, which is the point: a head
-# nobody builds is a head nobody knows is broken.
+# ---------------------------------------------------------------------------
+# Currently: Android on every push and pull request; Windows and Apple by hand.
+# ---------------------------------------------------------------------------
+#
+# All three jobs are kept and all three still work — the other two are gated to
+# workflow_dispatch so an ordinary push pays for one runner instead of three.
+# Android is the head being proven first (see the README), so it is the one
+# worth blocking a merge on.
+#
+# Run the other two from Actions -> CI -> Run workflow. Do that before anything
+# ships, because the point of having them stands: a head nobody builds is a
+# head nobody knows is broken, and the Apple heads compile 335 lines that no
+# other job touches. Gating them is a speed trade, not a decision that they
+# stopped mattering.
+#
+# To put a head back on every push, delete its `if:` line. Nothing else needs
+# changing.
 
 on:
   push:
@@ -109,6 +124,9 @@ jobs:
   build-windows:
     name: Build & analyze (net10.0-windows)
     runs-on: windows-latest
+    # Manual for now — see the header. Delete this line to restore it to every
+    # push and pull request.
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout hand
@@ -139,6 +157,10 @@ jobs:
   build-apple:
     name: Build & analyze (net10.0-ios, net10.0-maccatalyst)
     runs-on: macos-latest
+    # Manual for now — see the header. Delete this line to restore it to every
+    # push and pull request. Worth running before a release whatever else
+    # happens: nothing else in this workflow compiles Apple/**/*.cs.
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout hand
