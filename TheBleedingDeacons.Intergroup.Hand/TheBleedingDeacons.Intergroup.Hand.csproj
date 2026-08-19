@@ -54,9 +54,9 @@
 			Register learned both of these the hard way; see the long note in its
 			csproj before splitting these across per-configuration groups.
 		-->
-		<ApplicationDisplayVersion>1.1.3</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.1.4</ApplicationDisplayVersion>
 		<Version>$(ApplicationDisplayVersion)</Version>
-		<ApplicationVersion>5</ApplicationVersion>
+		<ApplicationVersion>6</ApplicationVersion>
 
 		<!--
 			Platform floors, matching Register's .NET 10 values.
