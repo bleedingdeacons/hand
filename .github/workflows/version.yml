@@ -1,0 +1,101 @@
+name: Version
+
+# Bumps the app version on main after a merge, from the commits that merge
+# brought in — which this repo already writes as conventional commits:
+#
+#   any `feat:` commit  -> minor bump (1.2.0 -> 1.3.0)
+#   anything else       -> patch bump (1.2.0 -> 1.2.1)
+#   never major         -> nothing here can declare a breaking release; that is
+#                          a deliberate act, taken by hand
+#
+# Commits without a conventional prefix — older history, and Dependabot's
+# "Bump X from A to B" — fall through to patch, which is the safe default.
+#
+# Ported from Register's workflow of the same name and kept in step with it.
+# Note that Reach's scheme is a different thing and not the model here: Reach
+# runs a full release-on-merge (it cuts majors from feat!/BREAKING CHANGE,
+# builds a zip and publishes a GitHub Release). This only moves the version in
+# the csproj. Hand ships through Play and the store listing is the release, so
+# there is no artifact for CI to publish.
+#
+# Why after the merge rather than on the pull request:
+#
+# Bumping in the PR put the branch's final commit under github-actions[bot],
+# and GitHub will not run checks on a bot-authored head unaided. The runs
+# either sat blocked at `action_required` awaiting a manual approval, or — with
+# [skip ci] to avoid that — never queued at all. Either way the commit that
+# actually merged was the one commit nobody built, and `gh pr checks` reported
+# a thinner list than the work that had really been verified.
+#
+# Versioning here instead keeps pull requests fully and honestly checked. The
+# cost, accepted deliberately: the version a change ships as is decided at
+# merge rather than being visible in review.
+
+on:
+  push:
+    branches: [ main ]
+
+# Needed to push the version commit back to main.
+permissions:
+  contents: write
+
+# Serialise. Two merges landing close together must not race to compute the
+# same next version. Deliberately not cancel-in-progress: a cancelled run would
+# drop a bump entirely.
+concurrency:
+  group: version-main
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          # Full history: the bump is derived by walking the commits this push
+          # brought in.
+          fetch-depth: 0
+
+      - name: Compute and apply the bump
+        id: bump
+        # Invoked through bash rather than directly: this repo is authored on
+        # Windows, where git frequently does not record the executable bit, and
+        # a missing +x would fail the run for a reason nothing in the diff shows.
+        #
+        # github.event.before is the tip main had before this push. It is
+        # all-zeros on a branch's first push, and can point at a commit this
+        # clone does not have after a force-push, so fall back to HEAD~1.
+        run: |
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "No usable github.event.before; falling back to HEAD~1."
+            before="HEAD~1"
+          fi
+          bash .github/scripts/bump-version.sh "${before}..HEAD"
+
+      - name: Commit the new version
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # [skip ci] so this push does not re-run the build jobs against a
+          # commit whose only change is a version string. The script also
+          # refuses to bump when HEAD is already a version commit, so the loop
+          # is closed twice over — belt and braces, because a runaway here
+          # would bump on every iteration.
+          git commit -am "chore: version ${{ steps.bump.outputs.version }} [skip ci]"
+          git push
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.bump.outputs.changed }}" = "true" ]; then
+            echo "### Version ${{ steps.bump.outputs.version }} (${{ steps.bump.outputs.bump }} bump)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Android versionCode ${{ steps.bump.outputs.code }}." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Version unchanged" >> "$GITHUB_STEP_SUMMARY"
+            echo "Nothing to version in this push." >> "$GITHUB_STEP_SUMMARY"
+          fi
