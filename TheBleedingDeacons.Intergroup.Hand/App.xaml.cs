@@ -93,9 +93,12 @@ public partial class App : Application
 		}
 	}
 
-	private static void OnAuthenticationLost(object? sender, EventArgs e)
+	private static void OnAuthenticationLost(object? sender, AuthenticationLostEventArgs e)
 	{
-		_ = GoAsync("//signin");
+		// The reason travels as a query parameter rather than being pushed
+		// into the view model, which is transient — the instance that will
+		// be on screen does not exist yet at this point.
+		_ = GoAsync($"//signin?reason={Uri.EscapeDataString(e.Reason)}");
 	}
 
 	private static async Task GoAsync(string route)

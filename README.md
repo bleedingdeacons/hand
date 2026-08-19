@@ -53,8 +53,21 @@ This is stricter than the Reach website, which also admits 12th-steppers.
 Reach re-checks the responder's role and certification against Unity on
 **every** request, so a lapsed certification stops the handset at its next
 call without anyone remembering to revoke the device. A refused handset
-clears its token and returns to the sign-in screen, so the responder is
-told rather than left with a phone that has quietly gone silent.
+clears its token and returns to the sign-in screen carrying the reason, so
+the responder is told rather than left with a phone that has quietly gone
+silent.
+
+An admin removing a handset from Reach's Devices page deletes the pairing
+outright, and Reach pushes a `device_removed` notice as it does. That kind
+is the one thing on the alert loop that is an instruction rather than an
+alert: it never reaches the alarm, the tray or the alerts list. Hand takes
+it as a prompt to check rather than an order to obey — it asks Reach who
+it is, and only signs out if Reach no longer knows it. That matters
+because an FCM registration token outlives the device row it was
+registered against, so a notice can arrive at a handset whose responder
+has already signed in again, and signing *that* one out would take a
+working phone off the rota. A handset that cannot reach Reach stays signed
+in; its next successful poll finds the 401 anyway.
 
 ## Signing in
 

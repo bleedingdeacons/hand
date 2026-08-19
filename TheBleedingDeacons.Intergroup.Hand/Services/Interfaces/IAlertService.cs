@@ -16,12 +16,15 @@ public interface IAlertService
 	ObservableCollection<HandAlert> Active { get; }
 
 	/// <summary>
-	/// Raised when Reach stops recognising this handset — revoked, or the
-	/// responder is no longer certified. The app drops its token and shows
-	/// sign-in. This is how a withdrawn certification reaches a responder
-	/// as a message rather than as alerts that quietly stop.
+	/// Raised when Reach stops recognising this handset — revoked,
+	/// removed, or the responder is no longer certified. The app drops its
+	/// token and shows sign-in. This is how a withdrawn certification
+	/// reaches a responder as a message rather than as alerts that quietly
+	/// stop, which is why the event carries one:
+	/// <see cref="AuthenticationLostEventArgs.Reason"/> is put in front of
+	/// the responder on the sign-in screen.
 	/// </summary>
-	event EventHandler? AuthenticationLost;
+	event EventHandler<AuthenticationLostEventArgs>? AuthenticationLost;
 
 	/// <summary>Begin polling. Safe to call when already started.</summary>
 	Task StartAsync();
@@ -56,4 +59,22 @@ public interface IAlertService
 	/// asked for tells a regulator nothing useful.</para>
 	/// </summary>
 	Task ShowContactAsync(HandAlert alert);
+}
+
+/// <summary>
+/// Why a handset stopped being signed in.
+///
+/// <para>A reason rather than a code, because its only consumer is the
+/// sign-in screen and its only job is to be read by whoever picks the
+/// handset up. A responder who finds themselves signed out at the start
+/// of a shift needs to know whether to sign back in or to ring the
+/// intergroup, and those are different answers.</para>
+/// </summary>
+public sealed class AuthenticationLostEventArgs(string reason) : EventArgs
+{
+	/// <summary>A sentence to show the responder. Never empty.</summary>
+	public string Reason { get; } =
+		string.IsNullOrWhiteSpace(reason)
+			? "This handset has been signed out. Sign in again to put it back on the rota."
+			: reason;
 }
