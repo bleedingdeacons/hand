@@ -54,8 +54,17 @@ public sealed partial class SettingsViewModel : ObservableObject
 	/// Version, build number, build timestamp and runtime, exactly as the
 	/// startup log banner reports them, so a support conversation and the
 	/// live tail agree about which build is on a handset.
+	///
+	/// <para><b>Instance, not static.</b> It was static, and the label on
+	/// the settings screen was therefore blank: a XAML Binding resolves
+	/// against the BindingContext <i>instance</i> and cannot see static
+	/// members, so it bound to nothing. It failed silently in both
+	/// directions — no build warning, because a binding to a missing
+	/// member is only a compile error when the compiler can prove the
+	/// type, and nothing on screen to notice, because an empty label
+	/// looks like an empty label.</para>
 	/// </summary>
-	public static string Build => BuildInfo.Summary;
+	public string Build => BuildInfo.Summary;
 
 	[RelayCommand]
 	private async Task SaveAsync()
