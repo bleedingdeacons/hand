@@ -102,10 +102,16 @@ namespace TheBleedingDeacons.Intergroup.Hand.Support
 					}
 
 					AppendOne(sb, inner, depth);
-					if (inner.InnerException != null)
-					{
-						AppendInners(sb, inner.InnerException, depth + 1, visited);
-					}
+
+					// Pass the branch itself, not its inner exception.
+					// AppendInners appends what is *underneath* what it is
+					// given, so handing it the child here made it start at
+					// the grandchild — dropping a whole level. Flatten()
+					// only unwraps nested AggregateExceptions, so a branch
+					// that wraps an ordinary exception (an
+					// HttpRequestException around a TimeoutException, say)
+					// lost the part that said what actually went wrong.
+					AppendInners(sb, inner, depth + 1, visited);
 				}
 
 				return;

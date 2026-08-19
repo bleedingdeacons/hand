@@ -1,6 +1,6 @@
 # Hand
 
-[![CI](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml)
+[![CI](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml) [![Coverage Status](https://coveralls.io/repos/github/bleedingdeacons/hand/badge.svg?branch=main)](https://coveralls.io/github/bleedingdeacons/hand?branch=main)
 
 A .NET MAUI app that alerts certified telephone responders when the
 helpline needs them. The server side is the
@@ -138,6 +138,37 @@ exactly that bug and now has the same fix.
 
 ## Building
 
+### The Core split
+
+Three projects:
+
+| Project | Frameworks | What is in it |
+| --- | --- | --- |
+| `TheBleedingDeacons.Intergroup.Hand` | the four platform heads | The MAUI app: views, view-models, the platform partials, and every service that touches `Preferences`, `SecureStorage`, `FileSystem`, `MainThread`, `Vibration`, `AppInfo`, `DeviceInfo` or `WebAuthenticator`. |
+| `TheBleedingDeacons.Intergroup.Hand.Core` | `net10.0` | The half with no MAUI in it: the wire models, `ReachClient`, `AlertService`, the Serilog and Better Stack glue. |
+| `TheBleedingDeacons.Intergroup.Hand.Tests` | `net10.0` | xUnit v3 over Hand.Core. |
+
+The split exists so the code can be tested at all. A test project cannot
+reference the app — its target frameworks are `net10.0-android`, `-ios`,
+`-maccatalyst` and `-windows`, a `net10.0` test host has no compatible one to
+resolve against, and there is no `net10.0` head of a MAUI app. So the testable
+code has to live somewhere a test project can see it.
+
+The line is not a matter of taste: the moment a file references a MAUI type it
+stops compiling in Hand.Core, because that project does not have the workload.
+Where a piece of logic was worth having on the testable side, the MAUI call it
+depended on became an interface instead — `AlertService` takes an
+`IUiDispatcher` rather than calling `MainThread` directly, which is what let
+the alert loop come across. The services listed in the app row above are each a
+candidate for the same treatment; none was worth inventing a seam for in the
+pass that introduced the split.
+
+Register arrived at the same arrangement from the other direction: its testable
+code was already a separate library because it was shared with other consumers,
+and that is what its test project references.
+
+### Compiling the heads
+
 ```bash
 dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true
 ```
@@ -159,10 +190,10 @@ loads. Signing is opt-in: pass a keystore or the build stays unsigned.
 
 ### The quality gate
 
-CI builds the Android head on every push and pull request, and that build *is*
-the gate. The Windows and Apple heads have jobs of their own, currently gated
-to a manual run (Actions → CI → Run workflow) so an ordinary push pays for one
-runner rather than three. `Directory.Build.props` wires in StyleCop.Analyzers
+CI builds the Android head and runs the tests on every push and pull request,
+and those two *are* the gate. The Windows and Apple heads have jobs of their
+own, currently gated to a manual run (Actions → CI → Run workflow) so an
+ordinary push pays for two runners rather than four. `Directory.Build.props` wires in StyleCop.Analyzers
 and Meziantou.Analyzer, `.editorconfig` escalates the rules that matter to
 `error`, and the csproj promotes the compiled-binding warnings (XC0022–XC0045)
 alongside them — so a style violation or a binding that quietly fell back to
@@ -202,8 +233,40 @@ dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true -p:UseDe
 Swap in `HandWindowsOnly` or `HandAppleOnly` for the other two jobs. The Apple
 one needs a Mac.
 
-There is no test project yet, so there is no test job. When one lands it
-belongs in the same workflow, shaped like Register's.
+### Tests and coverage
+
+```bash
+dotnet test TheBleedingDeacons.Intergroup.Hand.Tests
+```
+
+The suite is xUnit v3 on Microsoft.Testing.Platform, the same arrangement
+Register uses. It runs on every push and pull request alongside the Android
+build, on a plain Ubuntu runner with no MAUI workload to install.
+
+To reproduce the coverage number CI reports:
+
+```bash
+dotnet tool restore
+```
+
+```bash
+dotnet coverlet TheBleedingDeacons.Intergroup.Hand.Tests/bin/Debug/net10.0/TheBleedingDeacons.Intergroup.Hand.Tests.dll --target dotnet --targetargs "TheBleedingDeacons.Intergroup.Hand.Tests/bin/Debug/net10.0/TheBleedingDeacons.Intergroup.Hand.Tests.dll" --format cobertura --output coverage/coverage.cobertura.xml --include "[TheBleedingDeacons.Intergroup.Hand.Core]*" --exclude-by-attribute Obsolete
+```
+
+Coverage is collected with `coverlet.console` rather than coverlet's collector
+or msbuild integration, because those hook VSTest and Microsoft.Testing.Platform
+does not use it.
+
+**What the badge covers.** `TheBleedingDeacons.Intergroup.Hand.Core`, minus
+anything marked `[Obsolete]` — see [what is in it](#the-core-split) below. The app project is not in
+the figure, and cannot be: nothing can reference a project whose only target
+frameworks are platform heads. Read the percentage as "the MAUI-free half is
+this well covered", not "the app is". Register's badge has exactly the same
+scope for the same reason.
+
+Deprecated code is left out deliberately: writing tests for something already
+marked for removal would move the number without improving anything, and
+counting it would penalise the deprecation rather than the debt.
 
 ## Setup you have to do yourself
 

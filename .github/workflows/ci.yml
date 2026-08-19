@@ -1,6 +1,8 @@
 name: CI
 
-# Three jobs, the same gate on a different platform family each:
+# Four jobs. Three are the same gate on a different platform family each; the
+# fourth runs the unit tests and reports coverage.
+#
 #  * build         — compile the Android head and run the StyleCop / Meziantou
 #                    analyzers. Rules escalated to "error" in .editorconfig fail
 #                    the build, so this is a real quality gate rather than a
@@ -18,13 +20,18 @@ name: CI
 #                    other job compiles at all — Apple/**/*.cs is included only
 #                    for these two target frameworks — so without this the
 #                    Apple-only sources were never once built by CI.
+#  * test          — run the xUnit v3 suite over Hand.Core (the MAUI-free half
+#                    of the app) with Coverlet coverage, and upload the report
+#                    to Coveralls. Ubuntu, no workload: Hand.Core and its tests
+#                    are plain net10.0, which is the entire reason that split
+#                    exists — see Hand.Core's project file.
 #
 # Ported from Register's ci.yml, deliberately: the two apps are maintained by
 # the same people, share .editorconfig, stylecop.json and Directory.Build.props
 # byte for byte, and a second CI dialect would only mean two sets of habits.
 #
-# Three things Register's workflow carries that are absent here, so nobody
-# "restores parity" by adding them back:
+# Two things Register's workflow carries that are absent from every job here,
+# so nobody "restores parity" by adding them back:
 #
 #  * No GitHub Packages preflight. Register restores Integrity.Client from a
 #    private feed and has to probe the credentials; Hand has no nuget.config and
@@ -35,18 +42,20 @@ name: CI
 #    Platforms/Android/google-services.json — and the heads are verified to
 #    build without either. A placeholder here would be covering for a problem
 #    this repo does not have.
-#  * No test job. There is no test project in this repo yet. When there is, it
-#    belongs here alongside these, in the shape of Register's — xUnit v3 on
-#    Microsoft.Testing.Platform, coverlet.console for coverage, Coveralls upload.
 #
 # ---------------------------------------------------------------------------
 # Currently: Android on every push and pull request; Windows and Apple by hand.
 # ---------------------------------------------------------------------------
 #
-# All three jobs are kept and all three still work — the other two are gated to
-# workflow_dispatch so an ordinary push pays for one runner instead of three.
+# All three build jobs are kept and all three still work — the other two are
+# gated to workflow_dispatch so an ordinary push pays for two runners (Android
+# and the tests) instead of four.
 # Android is the head being proven first (see the README), so it is the one
 # worth blocking a merge on.
+#
+# The test job is not gated: it is a two-minute Ubuntu runner with no workload
+# to install, and it is the only job that checks behaviour rather than whether
+# the code compiles.
 #
 # Run the other two from Actions -> CI -> Run workflow. Do that before anything
 # ships, because the point of having them stands: a head nobody builds is a
@@ -194,3 +203,60 @@ jobs:
           -p:HandAppleOnly=true
           -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
+
+  test:
+    name: Test & coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout hand
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore local tools (coverlet.console)
+        run: dotnet tool restore
+
+      # No MAUI workload and no JDK: Hand.Core and its test project are plain
+      # net10.0. Building the test project pulls Hand.Core in with it.
+      - name: Build tests
+        run: >
+          dotnet build TheBleedingDeacons.Intergroup.Hand.Tests/TheBleedingDeacons.Intergroup.Hand.Tests.csproj
+          -c Debug
+
+      # xUnit v3 runs on Microsoft.Testing.Platform, so the test project is an
+      # executable. coverlet.console instruments Hand.Core and runs that test
+      # host, producing a Cobertura report. (coverlet's collector / msbuild
+      # integrations hook VSTest, which MTP does not use — hence the tool.)
+      #
+      # --include narrows the report to Hand.Core: the test assembly and the
+      # NuGet dependencies are not what this number is about. The app project
+      # is not in it either, because nothing can reference it — that is what
+      # the split is for, and what the README says the badge covers.
+      #
+      # --exclude-by-attribute Obsolete leaves deprecated code out of the
+      # figure. Writing tests for something already marked for removal would
+      # move the number without improving anything, and leaving it in would
+      # penalise the deprecation instead of the debt.
+      - name: Test with coverage
+        run: >
+          dotnet coverlet TheBleedingDeacons.Intergroup.Hand.Tests/bin/Debug/net10.0/TheBleedingDeacons.Intergroup.Hand.Tests.dll
+          --target dotnet
+          --targetargs "TheBleedingDeacons.Intergroup.Hand.Tests/bin/Debug/net10.0/TheBleedingDeacons.Intergroup.Hand.Tests.dll"
+          --format cobertura
+          --output coverage/coverage.cobertura.xml
+          --include "[TheBleedingDeacons.Intergroup.Hand.Core]*"
+          --exclude-by-attribute Obsolete
+
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          # Public repo: the built-in GITHUB_TOKEN authenticates the upload,
+          # so no separate Coveralls token/secret is required.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage/coverage.cobertura.xml
+          format: cobertura
+          fail-on-error: false
