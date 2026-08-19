@@ -9,6 +9,7 @@ namespace TheBleedingDeacons.Intergroup.Hand.ViewModels;
 /// <summary>
 /// Signing a responder in, by provider or by password.
 /// </summary>
+[QueryProperty(nameof(Reason), "reason")]
 public sealed partial class SignInViewModel : ObservableObject
 {
 	private readonly IDeviceAuthService _auth;
@@ -48,6 +49,27 @@ public sealed partial class SignInViewModel : ObservableObject
 	/// </summary>
 	[ObservableProperty]
 	public partial string PermissionWarning { get; set; } = string.Empty;
+
+	/// <summary>
+	/// Why the app sent the responder here, when it was not their idea.
+	///
+	/// <para>Set by <c>App</c> as a navigation parameter when Reach stops
+	/// recognising the handset — revoked, removed, or a certification that
+	/// has lapsed. It lands in <see cref="ErrorMessage"/> because that is
+	/// already the one place on this screen that explains itself, and a
+	/// responder who has been signed out mid-shift should not have to
+	/// guess between "sign in again" and "ring the intergroup".</para>
+	/// </summary>
+	[ObservableProperty]
+	public partial string Reason { get; set; } = string.Empty;
+
+	partial void OnReasonChanged(string value)
+	{
+		if (!string.IsNullOrWhiteSpace(value))
+		{
+			ErrorMessage = value;
+		}
+	}
 
 	public bool HasError => ErrorMessage.Length > 0;
 

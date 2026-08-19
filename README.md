@@ -1,5 +1,7 @@
 # Hand
 
+[![CI](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml)
+
 A .NET MAUI app that alerts certified telephone responders when the
 helpline needs them. The server side is the
 [Reach](https://github.com/bleedingdeacons/reach) WordPress plugin, which
@@ -53,8 +55,21 @@ This is stricter than the Reach website, which also admits 12th-steppers.
 Reach re-checks the responder's role and certification against Unity on
 **every** request, so a lapsed certification stops the handset at its next
 call without anyone remembering to revoke the device. A refused handset
-clears its token and returns to the sign-in screen, so the responder is
-told rather than left with a phone that has quietly gone silent.
+clears its token and returns to the sign-in screen carrying the reason, so
+the responder is told rather than left with a phone that has quietly gone
+silent.
+
+An admin removing a handset from Reach's Devices page deletes the pairing
+outright, and Reach pushes a `device_removed` notice as it does. That kind
+is the one thing on the alert loop that is an instruction rather than an
+alert: it never reaches the alarm, the tray or the alerts list. Hand takes
+it as a prompt to check rather than an order to obey — it asks Reach who
+it is, and only signs out if Reach no longer knows it. That matters
+because an FCM registration token outlives the device row it was
+registered against, so a notice can arrive at a handset whose responder
+has already signed in again, and signing *that* one out would take a
+working phone off the rota. A handset that cannot reach Reach stays signed
+in; its next successful poll finds the 401 anyway.
 
 ## Signing in
 
@@ -131,12 +146,57 @@ dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true
 dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandWindowsOnly=true
 ```
 
+```bash
+dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAppleOnly=true
+```
+
 Use those flags rather than `-f`: `-f` sets `TargetFramework` as a global
 property, which forces the chosen TFM onto every project in the tree.
 
 Release Android builds ship `android-arm64` only — the default also builds
 `android-x64`, which doubles the download for an ABI only an emulator
 loads. Signing is opt-in: pass a keystore or the build stays unsigned.
+
+### The quality gate
+
+CI builds every head this project declares — Android, Windows, iOS and Mac
+Catalyst — on every push and pull request, and that build *is* the gate. `Directory.Build.props` wires in StyleCop.Analyzers
+and Meziantou.Analyzer, `.editorconfig` escalates the rules that matter to
+`error`, and the csproj promotes the compiled-binding warnings (XC0022–XC0045)
+alongside them — so a style violation or a binding that quietly fell back to
+reflection fails the build rather than scrolling past in the output. All three
+files are byte-identical to Register's; the two apps share one house style
+deliberately.
+
+Every head is built, because they do not report the same things and in places
+they do not even compile the same files. The WinRT and CsWinRT analyzers
+(MVVMTK0045 and friends) only fire on the Windows head, which in turn only
+exists when building on Windows at all; and `Apple/**/*.cs` is compiled only
+into the iOS and Mac Catalyst heads, so nothing but the macOS job builds those
+sources. A head nobody builds is a head nobody knows is broken — which is how
+Register's Apple heads came to rot.
+
+One job per platform family, not per head: `-p:HandAppleOnly=true` builds iOS
+and Mac Catalyst together, since they need the same runner and share nearly all
+their code. MSBuild tags each diagnostic with its target framework, so the log
+still says which head broke.
+
+The macOS job signs nothing and needs no provisioning profile — a Debug build
+with no `RuntimeIdentifier` targets the simulator.
+
+CI passes `-p:UseDevCredentials=false`, so what it analyses is the code that
+ships rather than the `USE_DEV_CREDENTIALS` convenience path. Reproduce a CI
+build locally with:
+
+```bash
+dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true -p:UseDevCredentials=false
+```
+
+Swap in `HandWindowsOnly` or `HandAppleOnly` for the other two jobs. The Apple
+one needs a Mac.
+
+There is no test project yet, so there is no test job. When one lands it
+belongs in the same workflow, shaped like Register's.
 
 ## Setup you have to do yourself
 

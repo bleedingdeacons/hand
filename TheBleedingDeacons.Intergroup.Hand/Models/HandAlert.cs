@@ -23,6 +23,23 @@ public partial class HandAlert : ObservableObject
 	public const string PriorityUrgent = "urgent";
 
 	/// <summary>
+	/// The one kind that is an instruction rather than an alert: Reach
+	/// sends it as an administrator removes this handset from the rota.
+	///
+	/// <para>It must never reach the alarm. Everything else here is
+	/// something a responder is being asked to act on; this is the app
+	/// being told it is no longer enrolled, and waking someone at 3am to
+	/// read it would be absurd. <c>AlertService</c> intercepts it before
+	/// admission and signs out instead — see <c>IsDeviceRemoval</c>.</para>
+	///
+	/// <para>Matches the kind Reach raises in
+	/// <c>DevicesPage::removeFromRequest()</c>. The two spellings are a
+	/// wire contract; changing one without the other silently turns the
+	/// notice back into an alarm.</para>
+	/// </summary>
+	public const string KindDeviceRemoved = "device_removed";
+
+	/// <summary>
 	/// Whether Reach holds contact details for this alert.
 	///
 	/// <para>A flag, never the details. Those are personal data and stay
@@ -93,6 +110,13 @@ public partial class HandAlert : ObservableObject
 
 	public bool IsUrgent =>
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether this is the removal notice rather than an alert. See
+	/// <see cref="KindDeviceRemoved"/>.
+	/// </summary>
+	public bool IsDeviceRemoval =>
+		string.Equals(Kind, KindDeviceRemoved, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Whether the alert's window has closed. Checked before alarming as

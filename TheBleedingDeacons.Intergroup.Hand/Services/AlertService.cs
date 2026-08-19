@@ -20,6 +20,12 @@ namespace TheBleedingDeacons.Intergroup.Hand.Services;
 /// becomes active and the only place the alarm is started. Alerts are
 /// keyed by id, so a push and a poll carrying the same alert produce one
 /// entry and one alarm.</para>
+///
+/// <para>One kind that arrives on this loop is not an alert at all. A
+/// <see cref="HandAlert.KindDeviceRemoved"/> notice is Reach telling
+/// this handset it has been taken off the rota, and it is intercepted at
+/// the door and turned into a sign-out — see
+/// <see cref="HandleRemovalNoticeAsync"/>.</para>
 /// </summary>
 public sealed class AlertService : IAlertService, IDisposable
 {
@@ -55,7 +61,7 @@ public sealed class AlertService : IAlertService, IDisposable
 
 	public ObservableCollection<HandAlert> Active { get; } = [];
 
-	public event EventHandler? AuthenticationLost;
+	public event EventHandler<AuthenticationLostEventArgs>? AuthenticationLost;
 
 	public async Task StartAsync()
 	{
@@ -251,6 +257,19 @@ public sealed class AlertService : IAlertService, IDisposable
 	/// </summary>
 	private async Task AdmitAsync(HandAlert alert)
 	{
+		// The removal notice is an instruction, not an alert, so it turns
+		// back here before it can reach the list, the notification tray or
+		// the alarm. Checked ahead of the expiry test below on purpose: a
+		// notice that arrived late is not a stale emergency that has
+		// stopped mattering, it is a statement about this handset's
+		// enrolment that either still holds or does not — and the check
+		// against Reach, not the clock, is what settles which.
+		if (alert.IsDeviceRemoval)
+		{
+			await HandleRemovalNoticeAsync().ConfigureAwait(false);
+			return;
+		}
+
 		var now = DateTimeOffset.UtcNow;
 
 		// A push can be delivered late, and a handset back from a long time
@@ -363,7 +382,48 @@ public sealed class AlertService : IAlertService, IDisposable
 		}
 	}
 
-	private async Task HandleFailureAsync(ReachFailure failure)
+	/// <summary>
+	/// Act on a removal notice: ask Reach whether it is still true, and
+	/// sign out if it agrees.
+	///
+	/// <para><b>The notice is a prompt to check, never an instruction to
+	/// obey.</b> A push registration token outlives the device row it was
+	/// registered against, so a notice can be delivered late to a handset
+	/// whose responder has already signed in again — and signing that one
+	/// out would take a working handset off the rota on the strength of a
+	/// message about a pairing that no longer exists. Reach deleted the
+	/// row before sending, so the session check is decisive: if this
+	/// handset is still enrolled, the notice is not about it.</para>
+	///
+	/// <para>A handset that cannot reach Reach stays signed in. That is
+	/// the right way round — an unverifiable instruction to stop
+	/// listening is exactly the one not to act on, and the next poll to
+	/// get through will find the 401 anyway.</para>
+	/// </summary>
+	private async Task HandleRemovalNoticeAsync()
+	{
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			return;
+		}
+
+		Log.Information("Removal notice received — checking with Reach");
+
+		var result = await _reach.GetSessionAsync(token, CancellationToken.None).ConfigureAwait(false);
+		if (result.Success)
+		{
+			Log.Information("Removal notice ignored: this handset is still enrolled");
+			return;
+		}
+
+		await HandleFailureAsync(
+			result.Failure,
+			"An administrator has taken this handset off the alert rota. "
+			+ "Sign in again to enrol it afresh.").ConfigureAwait(false);
+	}
+
+	private async Task HandleFailureAsync(ReachFailure failure, string? reason = null)
 	{
 		if (failure is not (ReachFailure.Unauthenticated or ReachFailure.NotEligible))
 		{
@@ -376,9 +436,36 @@ public sealed class AlertService : IAlertService, IDisposable
 		Log.Warning("This handset is no longer authorised ({Failure}) — signing out", failure);
 
 		await StopAsync().ConfigureAwait(false);
+
+		// Nothing outstanding may survive the sign-out. The alerts page is
+		// about to be replaced by sign-in, and a notification left in the
+		// tray would open an app that can no longer fetch anything about
+		// it.
+		await ClearActiveAsync().ConfigureAwait(false);
+
 		await _configuration.ClearDeviceTokenAsync().ConfigureAwait(false);
 
-		AuthenticationLost?.Invoke(this, EventArgs.Empty);
+		AuthenticationLost?.Invoke(this, new AuthenticationLostEventArgs(reason ?? ReasonFor(failure)));
+	}
+
+	/// <summary>What to tell the responder, when the notice did not say.</summary>
+	private static string ReasonFor(ReachFailure failure) => failure switch
+	{
+		ReachFailure.NotEligible =>
+			"This handset has been signed out because you are no longer listed as a "
+			+ "certified telephone responder. Speak to your intergroup if that is wrong.",
+		_ =>
+			"This handset is no longer signed in to Reach. Sign in again to put it "
+			+ "back on the rota.",
+	};
+
+	/// <summary>Drop every outstanding alert, its notification and the alarm.</summary>
+	private async Task ClearActiveAsync()
+	{
+		foreach (var alert in Active.ToArray())
+		{
+			await RemoveAsync(alert.Id).ConfigureAwait(false);
+		}
 	}
 
 	public void Dispose()
