@@ -105,7 +105,16 @@ public partial class HandAlert : ObservableObject
 	[JsonPropertyName("expires_at")]
 	public long ExpiresAt { get; set; }
 
+	/// <summary>
+	/// Whatever the raising plugin attached, as a string map.
+	///
+	/// <para>Read through <see cref="AlertPayloadConverter"/> rather than
+	/// the built-in dictionary converter, which throws on the shapes
+	/// Reach genuinely sends — see that type for why one odd payload must
+	/// not be allowed to cost the whole poll.</para>
+	/// </summary>
 	[JsonPropertyName("payload")]
+	[JsonConverter(typeof(AlertPayloadConverter))]
 	public Dictionary<string, string> Payload { get; set; } = new(StringComparer.Ordinal);
 
 	public bool IsUrgent =>
