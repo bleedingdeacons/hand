@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		The half of Hand that has nothing to do with MAUI.
+
+		Everything here is plain .NET: the wire models, the Reach REST
+		client, the alert loop, the Serilog glue. It exists as its own
+		net10.0 library for one reason — a test project cannot reference the
+		app. The app's target frameworks are net10.0-android, -ios,
+		-maccatalyst and -windows; a net10.0 test host has no compatible
+		framework to resolve against, and there is no such thing as a
+		net10.0 head of a MAUI app. So the testable code has to live
+		somewhere a test project can actually see it, and this is that
+		somewhere.
+
+		Register reached the same arrangement from the opposite direction:
+		its testable code was already a separate library
+		(TheBleedingDeacons.Unity.Intergroup) because it was shared with
+		other consumers, and that is what its test project references. Same
+		shape, same reason it works.
+
+		<b>What may live here: anything that does not touch MAUI.</b> The
+		line is not stylistic — the moment a file references Preferences,
+		SecureStorage, FileSystem, MainThread, Vibration, AppInfo,
+		DeviceInfo, WebAuthenticator or any Microsoft.Maui type, it stops
+		compiling here, because those assemblies come from the MAUI workload
+		and this project does not have it. That is why AlertService takes an
+		IUiDispatcher rather than calling MainThread directly: the seam is
+		what let 480 lines of the app's most important logic come across.
+
+		What deliberately stayed in the app, and why:
+
+		  * ConfigurationService  — Preferences and SecureStorage.
+		  * DeviceAuthService     — WebAuthenticator and DeviceInfo.
+		  * AlertAlarm            — Vibration, plus per-head partial audio.
+		  * PlatformAlertPresenter, PushRegistrar — partial, per-head.
+		  * BetterStackLoggerController — FileSystem.AppDataDirectory.
+		  * FlushOnErrorSink      — reaches for the controller above.
+		  * BuildInfo             — AppInfo.
+		  * Views, ViewModels, MauiProgram — MAUI by definition.
+
+		Each of those is a candidate for a later seam of its own; none was
+		worth inventing one for in the same pass that introduced the split.
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<RootNamespace>TheBleedingDeacons.Intergroup.Hand</RootNamespace>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<!--
+		The same package versions the app pins. They are not inherited —
+		this project is referenced by the app, so a lower version here would
+		be lifted by the app's own reference and a higher one would silently
+		raise the app's. Keeping them written out means a bump has to be
+		made in both places on purpose rather than happening as a side
+		effect, and NuGet says so if they ever disagree.
+	-->
+	<ItemGroup>
+		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
+		<PackageReference Include="Serilog" Version="4.4.0" />
+		<PackageReference Include="Serilog.Sinks.Http" Version="9.2.1" />
+		<PackageReference Include="SonarAnalyzer.CSharp" Version="10.31.0.145097">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+</Project>

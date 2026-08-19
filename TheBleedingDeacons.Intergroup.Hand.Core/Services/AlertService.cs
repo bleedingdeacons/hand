@@ -33,6 +33,7 @@ public sealed class AlertService : IAlertService, IDisposable
 	private readonly IConfigurationService _configuration;
 	private readonly IAlertAlarm _alarm;
 	private readonly IPlatformAlertPresenter _presenter;
+	private readonly IUiDispatcher _dispatcher;
 
 	private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -51,12 +52,14 @@ public sealed class AlertService : IAlertService, IDisposable
 		IReachClient reach,
 		IConfigurationService configuration,
 		IAlertAlarm alarm,
-		IPlatformAlertPresenter presenter)
+		IPlatformAlertPresenter presenter,
+		IUiDispatcher dispatcher)
 	{
 		_reach = reach ?? throw new ArgumentNullException(nameof(reach));
 		_configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 		_alarm = alarm ?? throw new ArgumentNullException(nameof(alarm));
 		_presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
+		_dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
 	}
 
 	public ObservableCollection<HandAlert> Active { get; } = [];
@@ -187,7 +190,7 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
-		await MainThread.InvokeOnMainThreadAsync(() => alert.IsLoadingContact = true).ConfigureAwait(false);
+		await _dispatcher.InvokeAsync(() => alert.IsLoadingContact = true).ConfigureAwait(false);
 
 		try
 		{
@@ -197,7 +200,7 @@ public sealed class AlertService : IAlertService, IDisposable
 
 			if (result.Success)
 			{
-				await MainThread.InvokeOnMainThreadAsync(
+				await _dispatcher.InvokeAsync(
 					() => alert.Contact = result.Value ?? string.Empty).ConfigureAwait(false);
 
 				Log.Information("Contact details viewed for alert {AlertId}", alert.Id);
@@ -213,7 +216,7 @@ public sealed class AlertService : IAlertService, IDisposable
 		}
 		finally
 		{
-			await MainThread.InvokeOnMainThreadAsync(() => alert.IsLoadingContact = false).ConfigureAwait(false);
+			await _dispatcher.InvokeAsync(() => alert.IsLoadingContact = false).ConfigureAwait(false);
 		}
 	}
 
@@ -292,7 +295,7 @@ public sealed class AlertService : IAlertService, IDisposable
 			else
 			{
 				admitted = true;
-				await MainThread.InvokeOnMainThreadAsync(() => Active.Insert(0, alert)).ConfigureAwait(false);
+				await _dispatcher.InvokeAsync(() => Active.Insert(0, alert)).ConfigureAwait(false);
 			}
 		}
 		finally
@@ -331,7 +334,7 @@ public sealed class AlertService : IAlertService, IDisposable
 		{
 			Remember(alertId);
 
-			await MainThread.InvokeOnMainThreadAsync(() =>
+			await _dispatcher.InvokeAsync(() =>
 			{
 				var existing = Active.FirstOrDefault(a => a.Id == alertId);
 				if (existing is not null)
