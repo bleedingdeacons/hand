@@ -41,7 +41,17 @@
 	-->
 	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-	<!-- Restarts the poll after a reboot, so a handset left on the rota
-	     overnight is still listening in the morning. -->
-	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+	<!--
+		RECEIVE_BOOT_COMPLETED is deliberately NOT declared here, and the
+		poll still survives a reboot.
+
+		It was declared for years with no receiver behind it and a comment
+		claiming it restarted the poll, which it could not: the poll was a
+		timer inside the running app, and there is nothing a boot broadcast
+		can do to keep one of those alive. The background poll is now
+		WorkManager's (see HandPollWorker), and WorkManager declares the
+		permission and the receiver itself, in its own manifest, merged in
+		at build time. Adding it back here would say nothing true that is
+		not already handled.
+	-->
 </manifest>

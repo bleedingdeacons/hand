@@ -40,6 +40,13 @@ public class MainActivity : MauiAppCompatActivity
 		// would have the wrong sound for that first alert.
 		PlatformAlertPresenter.EnsureChannel(this);
 
+		// The background poll, which is what alerts a handset whose process
+		// is not running and whose push has failed or was never available.
+		// Scheduled at every launch rather than at sign-in: the policy is
+		// Keep, so an existing schedule is left alone, and the work stops at
+		// its own token check until there is something to poll for.
+		Platforms.Android.HandPollWorker.Schedule(this);
+
 		if (OperatingSystem.IsAndroidVersionAtLeast(27))
 		{
 			SetShowWhenLocked(true);

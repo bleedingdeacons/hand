@@ -235,6 +235,14 @@
 	     it would be dead weight in the package and an extra restore for a
 	     platform that cannot use it. -->
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<!--
+			WorkManager, for the background poll that runs when the app does
+			not - see HandPollWorker. Android only, like the Firebase binding
+			below it: the other heads either have no equivalent problem or no
+			equivalent API, and it would be dead weight in their packages.
+		-->
+		<PackageReference Include="Xamarin.AndroidX.Work.Runtime" Version="2.11.2.1" />
+
 		<PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.1" />
 
 		<!--
