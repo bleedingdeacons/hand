@@ -178,32 +178,15 @@ public sealed class HandFirebaseMessagingService : FirebaseMessagingService
 	/// </remarks>
 	private static async Task PresentWithoutTheAppAsync(HandAlert alert)
 	{
-		// The admission rules AlertService would have applied, applied here
-		// too, because this path bypasses it entirely.
-		//
-		// The removal notice is the one that matters. It is an instruction
-		// rather than an alert - Reach saying this handset is off the rota -
-		// and it must never reach the tray or the alarm. It also cannot be
-		// acted on from here, because deciding what to do about it means
-		// asking Reach whether it is still true. So it is left for the app,
-		// whose next session check settles it.
-		if (alert.IsDeviceRemoval)
-		{
-			Log.Information("Removal notice arrived before the app was ready; leaving it to the next launch");
-			return;
-		}
-
-		if (alert.IsExpired(DateTimeOffset.UtcNow))
-		{
-			Log.Debug("Alert {AlertId} arrived before the app was ready and had already expired", alert.Id);
-			return;
-		}
-
 		Log.Warning(
 			"Alert {AlertId} arrived before the app was ready; notifying from the push service",
 			alert.Id);
 
-		await new PlatformAlertPresenter().PresentAsync(alert).ConfigureAwait(false);
+		// The admission rules AlertService would have applied, applied here
+		// too, because this path bypasses it entirely. Shared with the
+		// background poll, which reaches the same situation by a different
+		// road — see HeadlessAlerts.
+		await HeadlessAlerts.TryPresentAsync(alert).ConfigureAwait(false);
 	}
 
 	private static PowerManager.WakeLock? AcquireWakeLock()
