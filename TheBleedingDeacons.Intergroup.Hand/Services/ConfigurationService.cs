@@ -29,6 +29,7 @@ public sealed class ConfigurationService : IConfigurationService
 	private const string ReachBaseUrlKey = "reach_base_url";
 	private const string ReachPollSecondsKey = "reach_poll_seconds";
 	private const string ReachOnDutyKey = "reach_on_duty";
+	private const string ReachPollEnabledKey = "reach_poll_enabled";
 
 	private readonly IConfiguration _configuration;
 
@@ -90,6 +91,7 @@ public sealed class ConfigurationService : IConfigurationService
 			BaseUrl = baseUrl,
 			PollSeconds = pollSeconds > 0 ? pollSeconds : 20,
 			OnDuty = Preferences.Get(ReachOnDutyKey, true),
+			Poll = Preferences.Get(ReachPollEnabledKey, true),
 		}.Normalised();
 	}
 
@@ -101,6 +103,7 @@ public sealed class ConfigurationService : IConfigurationService
 		Preferences.Set(ReachBaseUrlKey, normalised.BaseUrl);
 		Preferences.Set(ReachPollSecondsKey, normalised.PollSeconds);
 		Preferences.Set(ReachOnDutyKey, normalised.OnDuty);
+		Preferences.Set(ReachPollEnabledKey, normalised.Poll);
 
 		return Task.CompletedTask;
 	}

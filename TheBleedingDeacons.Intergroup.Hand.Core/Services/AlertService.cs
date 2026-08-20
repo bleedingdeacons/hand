@@ -73,10 +73,22 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
+		var configuration = _configuration.GetReachConfiguration();
+
+		// Polling turned off. Push still arrives and still alarms — this
+		// stops the asking, not the alerting — and RefreshAsync still
+		// works, because that is a responder deliberately pulling rather
+		// than the app deciding to.
+		if (!configuration.Poll)
+		{
+			Log.Information("Alert polling is turned off; this handset is relying on push alone");
+			return;
+		}
+
 		var cts = new CancellationTokenSource();
 		_pollLoop = cts;
 
-		var interval = TimeSpan.FromSeconds(_configuration.GetReachConfiguration().PollSeconds);
+		var interval = TimeSpan.FromSeconds(configuration.PollSeconds);
 
 		_ = Task.Run(
 			async () =>
