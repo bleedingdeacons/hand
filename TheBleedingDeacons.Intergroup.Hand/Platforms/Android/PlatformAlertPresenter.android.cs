@@ -25,6 +25,19 @@ public sealed partial class PlatformAlertPresenter
 
 	private partial async Task<bool> PlatformRequestPermissionsAsync()
 	{
+		var granted = await RequestNotificationPermissionAsync().ConfigureAwait(false);
+
+		// Asked second, and separately, because the two are not the same
+		// kind of thing: notifications are a hard requirement and their
+		// answer is the return value, while this one is best-effort and a
+		// refusal leaves a handset that still works, just less reliably.
+		RequestBatteryExemption();
+
+		return granted;
+	}
+
+	private static async Task<bool> RequestNotificationPermissionAsync()
+	{
 		// Android 13 (API 33) made notifications a runtime permission. A
 		// responder who declines it has a handset that cannot alert them
 		// while the app is closed, so the answer is surfaced rather than
@@ -53,6 +66,73 @@ public sealed partial class PlatformAlertPresenter
 
 			return status == PermissionStatus.Granted;
 		}).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Ask to be exempted from battery optimisation.
+	/// </summary>
+	/// <remarks>
+	/// <para><b>This is what keeps a closed handset reachable.</b> Android
+	/// sorts apps into App Standby buckets by how often they are opened,
+	/// and a duty phone is by design almost never opened — so Hand drifts
+	/// down to RARE, where the number of high-priority FCM messages
+	/// allowed to wake it is capped. Past that cap the system does not
+	/// deliver and drop; it <i>defers</i>, holding the message for the
+	/// next maintenance window, which can be hours. The alert is not lost,
+	/// it is late, and a helpline alert that arrives an hour late is lost
+	/// in every sense that matters.</para>
+	///
+	/// <para>An exempted app is not bucketed, so the cap does not apply.
+	/// That is the whole reason REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is in
+	/// the manifest. It was declared there from the start and never
+	/// actually requested, which meant a debug build worked — a debugger
+	/// pins the app to the ACTIVE bucket — and a real handset on someone's
+	/// bedside table did not.</para>
+	///
+	/// <para>Best-effort throughout. The system dialog can be declined,
+	/// and on a device with no activity to handle the intent it does not
+	/// appear at all. Both leave a handset that still polls while open and
+	/// still receives whatever push the bucket allows, so nothing here is
+	/// worth failing sign-in over — hence no return value and a warning
+	/// rather than a throw.</para>
+	/// </remarks>
+	private static void RequestBatteryExemption()
+	{
+		try
+		{
+			var context = AndroidApp.Context;
+			var packageName = context.PackageName;
+			if (string.IsNullOrEmpty(packageName))
+			{
+				return;
+			}
+
+			// Already exempt: asking again would put a dialog in front of a
+			// responder for something they have already agreed to.
+			var power = (PowerManager?)context.GetSystemService(Context.PowerService);
+			if (power is null || power.IsIgnoringBatteryOptimizations(packageName))
+			{
+				return;
+			}
+
+			var intent = new Intent(Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations);
+			intent.SetData(Android.Net.Uri.Parse($"package:{packageName}"));
+
+			// NewTask because this is started from the application context,
+			// not an activity — the sign-in flow runs it off the UI thread.
+			intent.AddFlags(ActivityFlags.NewTask);
+
+			context.StartActivity(intent);
+
+			Log.Information("Asked to be exempted from battery optimisation");
+		}
+		catch (Exception ex)
+		{
+			// ActivityNotFoundException on a device with the settings screen
+			// removed, or a SecurityException if the permission is ever
+			// stripped from the manifest. Neither stops the app working.
+			Log.Warning(ex, "Battery optimisation exemption could not be requested");
+		}
 	}
 
 	private partial Task PlatformPresentAsync(HandAlert alert)

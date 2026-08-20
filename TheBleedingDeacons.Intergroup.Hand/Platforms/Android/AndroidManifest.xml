@@ -28,11 +28,16 @@
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
 
 	<!--
-		Lets the app ask to be exempted from battery optimisation. OEM
-		battery managers are the main reason a data push fails to wake an
-		app on some handsets, and a duty phone that sleeps through the
-		helpline is the failure this app exists to prevent. Asking is
-		optional and the poll covers a refusal.
+		Lets the app ask to be exempted from battery optimisation, which it
+		does at sign-in — see PlatformAlertPresenter.RequestBatteryExemption
+		for what the exemption actually buys and why a duty phone needs it.
+
+		This permission sat here declared and unrequested for a while, and
+		the symptom was maddening: push worked perfectly under a debugger,
+		which pins the app to the ACTIVE standby bucket, and failed on a
+		real handset left alone, which drifts to RARE. If the request is
+		ever removed, remove this line with it rather than leaving the
+		declaration to imply a behaviour that is not there.
 	-->
 	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
