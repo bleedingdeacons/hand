@@ -141,9 +141,19 @@ public sealed class HandPollWorker : Worker
 			return Result.InvokeRetry()!;
 		}
 
+		var settings = configuration.GetReachConfiguration();
+
 		// Off duty is the responder saying stop. The handset keeps its
 		// token; it simply stops asking and stops making noise.
-		if (!configuration.GetReachConfiguration().OnDuty)
+		if (!settings.OnDuty)
+		{
+			return Result.InvokeSuccess()!;
+		}
+
+		// Polling turned off in Settings. The schedule is left in place
+		// rather than cancelled, so turning it back on takes effect at the
+		// next window instead of needing the app reopened to rebuild it.
+		if (!settings.Poll)
 		{
 			return Result.InvokeSuccess()!;
 		}

@@ -339,6 +339,58 @@ public sealed class AlertServiceTests
 		Assert.Equal(0, _reach.Polls);
 	}
 
+	/// <summary>
+	/// Polling turned off in Settings. The handset is trusting push alone
+	/// — a deliberate choice, and the one that makes a broken push
+	/// visible rather than quietly covered for.
+	/// </summary>
+	[Fact]
+	public async Task DoesNotStartAPollLoopWhenPollingIsTurnedOff()
+	{
+		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", Poll = false };
+		using var service = Build();
+
+		await service.StartAsync();
+		await Task.Delay(80);
+
+		Assert.Equal(0, _reach.Polls);
+
+		await service.StopAsync();
+	}
+
+	/// <summary>
+	/// Off stops the asking, not the alerting: a pushed alert still rings.
+	/// </summary>
+	[Fact]
+	public async Task StillAlarmsForAPushedAlertWhenPollingIsTurnedOff()
+	{
+		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", Poll = false };
+		using var service = Build();
+		await service.StartAsync();
+
+		await service.HandlePushAsync(Alerts.New(7));
+
+		Assert.Single(service.Active);
+		Assert.Single(_alarm.Started);
+	}
+
+	/// <summary>
+	/// An explicit refresh is a responder pulling, not the app deciding
+	/// to, so it is not what the setting turns off.
+	/// </summary>
+	[Fact]
+	public async Task AnExplicitRefreshStillWorksWhenPollingIsTurnedOff()
+	{
+		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", Poll = false };
+		_reach.PendingAlerts = ReachResult<IReadOnlyList<HandAlert>>.Ok([Alerts.New(7)]);
+		using var service = Build();
+
+		await service.RefreshAsync();
+
+		Assert.Equal(1, _reach.Polls);
+		Assert.Single(service.Active);
+	}
+
 	[Fact]
 	public async Task DoesNotPollWithoutAToken()
 	{

@@ -28,6 +28,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 		var reach = _configuration.GetReachConfiguration();
 		BaseUrl = reach.BaseUrl;
 		PollSeconds = reach.PollSeconds;
+		Poll = reach.Poll;
 		DeviceLabel = _configuration.DeviceLabel;
 	}
 
@@ -36,6 +37,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 	[ObservableProperty]
 	public partial int PollSeconds { get; set; }
+
+	/// <summary>
+	/// Whether this handset asks Reach for alerts as well as listening.
+	/// See <see cref="Models.ReachConfiguration.Poll"/> for what turning
+	/// it off costs.
+	/// </summary>
+	[ObservableProperty]
+	public partial bool Poll { get; set; } = true;
 
 	[ObservableProperty]
 	public partial string DeviceLabel { get; set; } = string.Empty;
@@ -74,6 +83,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 			var configuration = _configuration.GetReachConfiguration();
 			configuration.BaseUrl = BaseUrl;
 			configuration.PollSeconds = PollSeconds;
+			configuration.Poll = Poll;
 
 			await _configuration.SaveReachConfigurationAsync(configuration).ConfigureAwait(false);
 			_configuration.DeviceLabel = DeviceLabel;
@@ -83,9 +93,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 			var saved = _configuration.GetReachConfiguration();
 			BaseUrl = saved.BaseUrl;
 			PollSeconds = saved.PollSeconds;
+			Poll = saved.Poll;
 
-			// The poll interval is read when the loop starts, so a changed
-			// value only takes effect on a restart of it.
+			// The poll interval and whether to poll at all are both read
+			// when the loop starts, so a change to either only takes
+			// effect on a restart of it. Stopping and starting is also
+			// what turns the loop off: StartAsync declines to run one
+			// when polling is disabled.
 			await _alerts.StopAsync().ConfigureAwait(false);
 			await _alerts.StartAsync().ConfigureAwait(false);
 

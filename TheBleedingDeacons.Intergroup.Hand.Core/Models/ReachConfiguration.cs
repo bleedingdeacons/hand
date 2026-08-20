@@ -41,6 +41,30 @@ public class ReachConfiguration
 	/// </summary>
 	public bool OnDuty { get; set; } = true;
 
+	/// <summary>
+	/// Whether this handset asks Reach for alerts, as well as listening
+	/// for pushed ones.
+	/// </summary>
+	/// <remarks>
+	/// <para><b>On by default, and turning it off is a real loss.</b> The
+	/// poll is what makes the app dependable: it covers Windows and macOS
+	/// entirely, it catches whatever FCM dropped while the handset was in
+	/// a tunnel, and it is the only route left when a push registration
+	/// token rotates silently. A handset with this off is trusting push
+	/// alone, and push is the fast path, never the certain one.</para>
+	///
+	/// <para>It exists because "did that arrive by push or by poll?" is
+	/// otherwise unanswerable from outside the app, and the two are
+	/// indistinguishable to a responder watching an alert appear. With
+	/// the poll off, anything that arrives came by push — which is what
+	/// makes a broken push visible instead of quietly covered for.</para>
+	///
+	/// <para>Off does not mean silent. Pushed alerts still ring, and an
+	/// explicit refresh still fetches; what stops is the automatic
+	/// asking, both the in-app timer and the background one.</para>
+	/// </remarks>
+	public bool Poll { get; set; } = true;
+
 	public bool IsValid()
 	{
 		return !string.IsNullOrWhiteSpace(BaseUrl)
@@ -72,6 +96,7 @@ public class ReachConfiguration
 			BaseUrl = baseUrl,
 			PollSeconds = Math.Clamp(PollSeconds, 5, 300),
 			OnDuty = OnDuty,
+			Poll = Poll,
 		};
 	}
 }

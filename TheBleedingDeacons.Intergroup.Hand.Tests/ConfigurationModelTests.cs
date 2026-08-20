@@ -97,6 +97,20 @@ public sealed class ReachConfigurationTests
 		Assert.Equal(20, configuration.PollSeconds);
 		Assert.True(configuration.OnDuty);
 	}
+
+	/// <summary>
+	/// Polling is the safety net behind push, so a handset that has never
+	/// been told otherwise must poll.
+	/// </summary>
+	[Fact]
+	public void PollsByDefault() => Assert.True(new ReachConfiguration().Poll);
+
+	[Fact]
+	public void Normalised_CarriesPollThrough()
+	{
+		Assert.False(new ReachConfiguration { Poll = false }.Normalised().Poll);
+		Assert.True(new ReachConfiguration { Poll = true }.Normalised().Poll);
+	}
 }
 
 /// <summary>

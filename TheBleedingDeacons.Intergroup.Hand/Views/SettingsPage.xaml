@@ -32,6 +32,23 @@
                 FontSize="12"
                 Opacity="0.6" />
 
+            <!--
+                Off means push only. Worth the warning underneath: the poll
+                is what covers a push that silently stopped working, and a
+                responder cannot tell the difference from the outside.
+            -->
+            <HorizontalStackLayout Spacing="8">
+                <CheckBox IsChecked="{Binding Poll}" VerticalOptions="Center" />
+                <Label
+                    Text="Check for alerts by polling"
+                    FontSize="13"
+                    VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Label
+                Text="Leave this on. With it off, alerts arrive only when Reach pushes them &#8212; so if push stops working, this handset goes quiet and nothing says so."
+                FontSize="12"
+                Opacity="0.6" />
+
             <Label Text="Device name" FontSize="13" Opacity="0.6" />
             <Entry
                 Placeholder="This handset"
