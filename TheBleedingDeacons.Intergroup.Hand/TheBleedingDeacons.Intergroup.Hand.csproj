@@ -199,6 +199,35 @@
 		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.Core\TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
 	</ItemGroup>
 
+	<!--
+		iOS only, and three separate things.
+
+		The notification extension is referenced so it gets built and bundled
+		into the .app; IsAppExtension is what tells the iOS SDK this is an
+		embedded extension rather than an ordinary library. Nothing in the app
+		calls into it - iOS launches it.
+
+		SharedKeychain is compiled into both from the one file rather than
+		copied. It decides which keychain entry the payload key lives in, and
+		two answers to that question is exactly how the app and the extension
+		end up looking in different places.
+
+		The entitlements carry the shared keychain access group. Both bundles
+		must declare the same one, and it must be registered against the team
+		in the Apple Developer account - without that everything compiles and
+		the extension reads nothing.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.NotificationService\TheBleedingDeacons.Intergroup.Hand.NotificationService.csproj">
+			<IsAppExtension>true</IsAppExtension>
+		</ProjectReference>
+		<Compile Include="..\TheBleedingDeacons.Intergroup.Hand.NotificationService\SharedKeychain.cs" Link="Apple\SharedKeychain.cs" />
+	</ItemGroup>
+
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />

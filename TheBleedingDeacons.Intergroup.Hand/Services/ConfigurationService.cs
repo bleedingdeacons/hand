@@ -3,6 +3,9 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Serilog;
+#if IOS
+using TheBleedingDeacons.Intergroup.Hand.NotificationService;
+#endif
 using TheBleedingDeacons.Intergroup.Hand.Models;
 using TheBleedingDeacons.Intergroup.Hand.Services.Interfaces;
 
@@ -147,6 +150,25 @@ public sealed class ConfigurationService : IConfigurationService
 			Log.Error(ex, "Payload key could not be written to secure storage");
 			throw;
 		}
+
+#if IOS
+		// And again, into the shared keychain group, because the
+		// notification extension cannot read the entry above.
+		//
+		// Written to both rather than moved: the app itself keeps using
+		// SecureStorage, which is the right thing everywhere the app is the
+		// only reader, and a handset whose shared-group entitlement is not
+		// yet provisioned still has a working app. The extension is the only
+		// thing that needs the second copy, and it is also the only thing
+		// that fails without it.
+		if (!SharedKeychain.Write(key))
+		{
+			// Not fatal. It means the notification extension will not be able
+			// to open alerts on this handset, which shows as "could not read"
+			// on the lock screen rather than as silence.
+			Log.Warning("Payload key could not be written to the shared keychain; the notification extension will not be able to decrypt");
+		}
+#endif
 	}
 
 	public Task ClearPayloadKeyAsync()
@@ -159,6 +181,19 @@ public sealed class ConfigurationService : IConfigurationService
 		{
 			Log.Warning(ex, "Payload key could not be cleared from secure storage");
 		}
+
+#if IOS
+		// Signing out has to forget both copies, or the extension would go
+		// on decrypting alerts for a handset that is no longer enrolled.
+		try
+		{
+			SharedKeychain.Delete();
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Payload key could not be cleared from the shared keychain");
+		}
+#endif
 
 		return Task.CompletedTask;
 	}
