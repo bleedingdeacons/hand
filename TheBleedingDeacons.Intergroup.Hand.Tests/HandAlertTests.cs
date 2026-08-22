@@ -268,4 +268,56 @@ public sealed class HandAlertTests
 		Assert.DoesNotContain("07700", json, StringComparison.Ordinal);
 		Assert.DoesNotContain("isLoadingContact", json, StringComparison.OrdinalIgnoreCase);
 	}
+
+	/// <summary>
+	/// What a secure lock screen may show. The Android presenter hands these
+	/// two values to the public version of the notification, so anything
+	/// that leaked into them would be readable by whoever is standing near
+	/// a phone lying face-up on a table.
+	/// </summary>
+	[Fact]
+	public void LockScreenText_CarriesNothingFromThePayload()
+	{
+		var alert = Alerts.New();
+		alert.Title = "Callback wanted for Joanne on 07700 900000";
+		alert.Body = "She is at 14 Example Street";
+		alert.Reference = "CR-000123";
+
+		Assert.DoesNotContain("Joanne", alert.LockScreenTitle, StringComparison.Ordinal);
+		Assert.DoesNotContain("07700", alert.LockScreenTitle, StringComparison.Ordinal);
+		Assert.DoesNotContain("Example Street", alert.LockScreenTitle, StringComparison.Ordinal);
+		Assert.DoesNotContain("CR-000123", alert.LockScreenTitle, StringComparison.Ordinal);
+
+		Assert.DoesNotContain("Joanne", HandAlert.LockScreenBody, StringComparison.Ordinal);
+		Assert.DoesNotContain("CR-000123", HandAlert.LockScreenBody, StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Urgency survives redaction deliberately: it is not a secret, and it
+	/// is what tells a responder whether the phone can wait.
+	/// </summary>
+	[Theory]
+	[InlineData("normal", "Helpline alert")]
+	[InlineData("urgent", "Urgent helpline alert")]
+	[InlineData("URGENT", "Urgent helpline alert")]
+	public void LockScreenTitle_KeepsUrgencyAndNothingElse(string priority, string expected)
+	{
+		var alert = Alerts.New();
+		alert.Priority = priority;
+
+		Assert.Equal(expected, alert.LockScreenTitle);
+	}
+
+	/// <summary>
+	/// An alert with nothing in it at all still says something a responder
+	/// can act on. A blank lock-screen notification reads as a fault.
+	/// </summary>
+	[Fact]
+	public void LockScreenText_IsNeverEmpty()
+	{
+		var alert = new HandAlert();
+
+		Assert.NotEmpty(alert.LockScreenTitle);
+		Assert.NotEmpty(HandAlert.LockScreenBody);
+	}
 }

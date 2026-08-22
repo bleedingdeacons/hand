@@ -121,6 +121,36 @@ public partial class HandAlert : ObservableObject
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// What a secure lock screen is allowed to show in place of the alert.
+	///
+	/// <para>Reach already refuses to put personal data in an alert, so in
+	/// principle <see cref="Title"/> is safe to display. This does not rely
+	/// on that. A responder's phone lies face-up on a table in a room with
+	/// other people in it, and the one field a human writes freehand — the
+	/// administrator's custom message — is validated for length and markup
+	/// but not for meaning. Redacting whatever the payload happens to hold
+	/// costs a tap to read and removes the whole question.</para>
+	///
+	/// <para>Deliberately carries nothing from the payload at all, not even
+	/// <see cref="Reference"/>. A reference is non-identifying by design and
+	/// would be genuinely useful here, but "by design" is exactly the
+	/// assurance this property exists not to depend on.</para>
+	///
+	/// <para>Urgency is the one thing it does keep, because urgency is not a
+	/// secret and it is what tells a responder whether the phone can wait
+	/// until they have finished what they are doing.</para>
+	/// </summary>
+	public string LockScreenTitle =>
+		IsUrgent ? "Urgent helpline alert" : "Helpline alert";
+
+	/// <summary>
+	/// The second line of <see cref="LockScreenTitle"/>'s notification.
+	/// Constant rather than computed: there is nothing about an alert that
+	/// may safely vary it.
+	/// </summary>
+	public const string LockScreenBody = "Unlock to read";
+
+	/// <summary>
 	/// Whether this is the removal notice rather than an alert. See
 	/// <see cref="KindDeviceRemoved"/>.
 	/// </summary>

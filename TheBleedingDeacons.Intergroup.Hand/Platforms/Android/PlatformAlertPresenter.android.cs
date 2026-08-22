@@ -168,8 +168,21 @@ public sealed partial class PlatformAlertPresenter
 		builder.SetOngoing(true);
 		builder.SetCategory(NotificationCompat.CategoryAlarm);
 		builder.SetPriority(NotificationCompat.PriorityMax);
-		builder.SetVisibility(NotificationCompat.VisibilityPublic);
 		builder.SetContentIntent(contentIntent);
+
+		// Private, with a redacted stand-in for the lock screen. Without the
+		// public version Android would substitute its own "Contents hidden"
+		// line, which says less than we can and looks like a fault.
+		//
+		// Two things this does not change. The full-screen intent still
+		// fires, so the phone still rings like an incoming call — visibility
+		// governs what is legible, not whether the handset alarms. And it
+		// only takes effect on a *secure* lock screen: on a handset with no
+		// PIN or biometric there is nothing to redact behind, and Android
+		// shows the real notification. That is the user's decision to have
+		// made, and not one the app can override.
+		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
 
 		// The full-screen intent is what turns a notification into an
 		// incoming call: the system launches the activity over the lock
@@ -227,6 +240,40 @@ public sealed partial class PlatformAlertPresenter
 	/// sound routes to the alarm stream and is not silenced by the ringer
 	/// being down.</para>
 	/// </summary>
+	/// <summary>
+	/// The notification a secure lock screen shows instead of the real one.
+	///
+	/// <para>Built here rather than reusing the builder above because the
+	/// two have almost nothing in common: this one carries no payload text,
+	/// no big-text style and no full-screen intent — it is a placard, not an
+	/// alarm. It keeps the icon, the channel and the content intent so that
+	/// it looks like the same notification and tapping it still opens the
+	/// app.</para>
+	///
+	/// <para>The wording comes from <see cref="HandAlert"/> so that what a
+	/// stranger may read is decided in the half of the app that has tests,
+	/// rather than inline in a platform file that CI only compiles.</para>
+	/// </summary>
+	/// <remarks>
+	/// Returns a nullable because <c>Build()</c> is bound as one, in the same
+	/// way every setter on the builder is — see the note above on why this
+	/// file does not pretend otherwise. <c>SetPublicVersion</c> accepts null
+	/// and treats it as "no public version", which degrades to Android's own
+	/// "Contents hidden" line rather than to an unredacted notification.
+	/// </remarks>
+	private static Notification? RedactedVersion(Context context, HandAlert alert, PendingIntent? contentIntent)
+	{
+		var builder = new NotificationCompat.Builder(context, ChannelId);
+		builder.SetContentTitle(alert.LockScreenTitle);
+		builder.SetContentText(HandAlert.LockScreenBody);
+		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
+		builder.SetCategory(NotificationCompat.CategoryAlarm);
+		builder.SetVisibility(NotificationCompat.VisibilityPublic);
+		builder.SetContentIntent(contentIntent);
+
+		return builder.Build();
+	}
+
 	internal static void EnsureChannel(Context context)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
@@ -246,7 +293,17 @@ public sealed partial class PlatformAlertPresenter
 			NotificationImportance.High)
 		{
 			Description = "Alerts for the telephone-responder rota. These are meant to wake you.",
-			LockscreenVisibility = NotificationVisibility.Public,
+
+			// The channel default, which matters only on a fresh install:
+			// the guard above returns early when the channel already exists,
+			// and Android does not let an app redefine one afterwards —
+			// visibility becomes the user's setting from that point on.
+			//
+			// So this is not what delivers the redaction. Each notification
+			// sets its own visibility, and where the two disagree the system
+			// takes the more private of them, which is why handsets that
+			// created this channel under an earlier build are still covered.
+			LockscreenVisibility = NotificationVisibility.Private,
 		};
 
 		channel.EnableVibration(true);
