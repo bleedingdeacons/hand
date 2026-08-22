@@ -18,6 +18,14 @@ public class DeviceSession
 	[JsonPropertyName("token")]
 	public string Token { get; set; } = string.Empty;
 
+	/// <summary>
+	/// The secret Reach encrypts alert payloads to. Like <see cref="Token"/>
+	/// it appears only in an enrolment response and cannot be reissued, so
+	/// it goes straight to secure storage and is dropped from memory.
+	/// </summary>
+	[JsonPropertyName("payload_key")]
+	public string PayloadKey { get; set; } = string.Empty;
+
 	[JsonPropertyName("device_id")]
 	public long DeviceId { get; set; }
 

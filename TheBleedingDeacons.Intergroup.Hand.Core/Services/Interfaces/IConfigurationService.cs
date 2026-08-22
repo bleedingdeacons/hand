@@ -33,6 +33,20 @@ public interface IConfigurationService
 	Task ClearDeviceTokenAsync();
 
 	/// <summary>
+	/// The key Reach encrypts alert payloads to, or empty when this
+	/// handset has none — enrolled before keys existed, or on a device
+	/// whose keystore has since been invalidated.
+	///
+	/// <para>Empty is not an error. Reach sends plaintext to a handset it
+	/// has no key for, so an alert still arrives and still rings.</para>
+	/// </summary>
+	Task<string> GetPayloadKeyAsync();
+
+	Task SavePayloadKeyAsync(string key);
+
+	Task ClearPayloadKeyAsync();
+
+	/// <summary>
 	/// A human label for this handset, shown in Reach's admin list so an
 	/// administrator can tell one enrolled device from another.
 	/// </summary>

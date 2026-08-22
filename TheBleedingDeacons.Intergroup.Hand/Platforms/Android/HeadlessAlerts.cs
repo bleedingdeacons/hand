@@ -25,6 +25,40 @@ namespace TheBleedingDeacons.Intergroup.Hand.Platforms.Android;
 internal static class HeadlessAlerts
 {
 	/// <summary>
+	/// The key Reach encrypts this handset's alert payloads to, or empty
+	/// when it has none.
+	///
+	/// <para>Here for the same reason the rest of this class is: a push
+	/// can arrive with no app behind it, so there is no container to ask
+	/// and no <c>AlertService</c> to lean on. <c>ConfigurationService</c>
+	/// reads secure storage and needs nothing injected.</para>
+	///
+	/// <para>Secure storage is read directly rather than through
+	/// <c>ConfigurationService</c>, which takes an <c>IConfiguration</c>
+	/// it has no container to supply here. The storage key is shared with
+	/// that class so the two cannot drift apart.</para>
+	///
+	/// <para>Blocking, because <c>OnMessageReceived</c> has no async form
+	/// and returning before the notification is posted is how an alert
+	/// silently never arrives. Empty on any failure — an unreadable key
+	/// is the same as no key, and Reach answers a handset it has no key
+	/// for in plaintext, so the alert still rings.</para>
+	/// </summary>
+	public static string PayloadKey()
+	{
+		try
+		{
+			return SecureStorage.GetAsync(ConfigurationService.PayloadKeyKey).GetAwaiter().GetResult()
+				?? string.Empty;
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Payload key could not be read while handling a push");
+			return string.Empty;
+		}
+	}
+
+	/// <summary>
 	/// Show <paramref name="alert"/> if it is the kind of thing that
 	/// should be shown. Returns whether it was.
 	/// </summary>

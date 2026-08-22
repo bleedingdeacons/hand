@@ -70,6 +70,7 @@ public sealed class DeviceAuthService : IDeviceAuthService
 			// dead and keeping it would only produce 401s forever.
 			Log.Information("Stored device token is no longer accepted ({Failure}); clearing", result.Failure);
 			await _configuration.ClearDeviceTokenAsync().ConfigureAwait(false);
+			await _configuration.ClearPayloadKeyAsync().ConfigureAwait(false);
 			Current = null;
 			return false;
 		}
@@ -178,6 +179,7 @@ public sealed class DeviceAuthService : IDeviceAuthService
 		}
 
 		await _configuration.ClearDeviceTokenAsync().ConfigureAwait(false);
+		await _configuration.ClearPayloadKeyAsync().ConfigureAwait(false);
 		Current = null;
 	}
 
@@ -230,9 +232,18 @@ public sealed class DeviceAuthService : IDeviceAuthService
 
 		await _configuration.SaveDeviceTokenAsync(result.Value.Token).ConfigureAwait(false);
 
-		// Keep the session but drop the plaintext token from memory — it is
-		// in secure storage now, and nothing above this needs it.
+		// Only enrolment carries a payload key. A session check answers
+		// without one, and writing that empty value would wipe a perfectly
+		// good key on every launch.
+		if (result.Value.PayloadKey.Length > 0)
+		{
+			await _configuration.SavePayloadKeyAsync(result.Value.PayloadKey).ConfigureAwait(false);
+		}
+
+		// Keep the session but drop both secrets from memory — they are in
+		// secure storage now, and nothing above this needs them.
 		result.Value.Token = string.Empty;
+		result.Value.PayloadKey = string.Empty;
 		Current = result.Value;
 
 		Log.Information(

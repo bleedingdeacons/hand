@@ -25,6 +25,16 @@ public sealed class ConfigurationService : IConfigurationService
 		"TheBleedingDeacons.Intergroup.Hand.devsettings.json";
 
 	private const string DeviceTokenKey = "hand_device_token";
+	/// <summary>
+	/// Secure-storage key for the alert payload key.
+	///
+	/// <para>Internal rather than private because a push can arrive with
+	/// no app behind it, and <see cref="Platforms.Android.HeadlessAlerts"/>
+	/// then reads secure storage without a container to build this service
+	/// from. Sharing the name is what stops the two readers drifting on to
+	/// different entries.</para>
+	/// </summary>
+	internal const string PayloadKeyKey = "hand_payload_key";
 	private const string DeviceLabelKey = "device_label";
 	private const string ReachBaseUrlKey = "reach_base_url";
 	private const string ReachPollSecondsKey = "reach_poll_seconds";
@@ -104,6 +114,51 @@ public sealed class ConfigurationService : IConfigurationService
 		Preferences.Set(ReachPollSecondsKey, normalised.PollSeconds);
 		Preferences.Set(ReachOnDutyKey, normalised.OnDuty);
 		Preferences.Set(ReachPollEnabledKey, normalised.Poll);
+
+		return Task.CompletedTask;
+	}
+
+	public async Task<string> GetPayloadKeyAsync()
+	{
+		try
+		{
+			return await SecureStorage.GetAsync(PayloadKeyKey).ConfigureAwait(false) ?? string.Empty;
+		}
+		catch (Exception ex)
+		{
+			// Same tolerance as the token below, and the same reasoning: an
+			// unreadable key is the same as no key. Reach answers a handset
+			// it has no key for in plaintext, so alerts keep arriving —
+			// unencrypted, which is worse than intended and far better than
+			// a handset that crashes on launch or stops ringing.
+			Log.Warning(ex, "Payload key could not be read from secure storage");
+			return string.Empty;
+		}
+	}
+
+	public async Task SavePayloadKeyAsync(string key)
+	{
+		try
+		{
+			await SecureStorage.SetAsync(PayloadKeyKey, key).ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "Payload key could not be written to secure storage");
+			throw;
+		}
+	}
+
+	public Task ClearPayloadKeyAsync()
+	{
+		try
+		{
+			SecureStorage.Remove(PayloadKeyKey);
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Payload key could not be cleared from secure storage");
+		}
 
 		return Task.CompletedTask;
 	}
