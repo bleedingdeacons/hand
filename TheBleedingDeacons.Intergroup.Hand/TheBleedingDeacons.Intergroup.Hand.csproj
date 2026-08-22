@@ -23,6 +23,14 @@
 		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFrameworks>
 		<TargetFrameworks Condition="'$(HandWindowsOnly)' == 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
 		<TargetFrameworks Condition="'$(HandAppleOnly)' == 'true'">net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+		<!--
+			MacCatalyst alone. CI uses this rather than HandAppleOnly because
+			the iOS head cannot be built without a signing identity - see the
+			note further down beside CodesignEntitlements. MacCatalyst still
+			compiles every Apple/**/*.cs source, so the coverage that job
+			exists for survives; what is lost is the iOS head's own bundling.
+		-->
+		<TargetFrameworks Condition="'$(HandMacCatalystOnly)' == 'true'">net10.0-maccatalyst</TargetFrameworks>
 
 		<OutputType>Exe</OutputType>
 		<RootNamespace>TheBleedingDeacons.Intergroup.Hand</RootNamespace>
