@@ -229,25 +229,23 @@
 	</PropertyGroup>
 
 	<!--
-		CI compiles the iOS head for the simulator.
+		NOTE: the iOS head cannot be built by CI while these entitlements are
+		declared. Xamarin.Shared.targets runs signing-identity detection as
+		soon as a project has entitlements, and a GitHub runner has neither a
+		certificate nor a provisioning profile, so the build stops at "No
+		valid iOS code signing keys found in keychain" before compiling.
+		Targeting the simulator does not avoid it; the detection is keyed on
+		the entitlements, not on the destination.
 
-		Declaring entitlements above puts the build on the codesigning path,
-		and a GitHub runner has no Apple certificate: without this the job
-		fails with "No valid iOS code signing keys found in keychain" before
-		it has compiled anything useful. A simulator build needs no identity
-		and still compiles every source file, which is all this gate was ever
-		for - it is a compile check, not a shippable artefact.
+		The entitlements stay unconditional anyway. Making them depend on
+		whether a key happens to be present would let a device build ship
+		without the shared keychain group, and the extension would then read
+		nothing while looking perfectly healthy - which is precisely the
+		failure this feature exists to prevent.
 
-		Deliberately keyed on ContinuousIntegrationBuild, which the workflow
-		already passes, rather than on whether a signing key happens to be
-		present. Dropping the entitlements when no key is found would let a
-		device build silently ship without the shared keychain group, and the
-		extension would then read nothing while looking perfectly healthy -
-		which is the exact failure this whole feature keeps trying to avoid.
+		Verifying the iOS head therefore needs either a signing identity and
+		a profile carrying the App Group installed on the runner, or a Mac.
 	-->
-	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and '$(ContinuousIntegrationBuild)' == 'true'">
-		<RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
-	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
