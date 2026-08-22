@@ -166,10 +166,12 @@ jobs:
   build-apple:
     name: Build & analyze (net10.0-ios, net10.0-maccatalyst)
     runs-on: macos-latest
-    # Manual for now — see the header. Delete this line to restore it to every
-    # push and pull request. Worth running before a release whatever else
-    # happens: nothing else in this workflow compiles Apple/**/*.cs.
-    if: github.event_name == 'workflow_dispatch'
+    # Runs on every push and pull request, like the other three. It was
+    # manual for a while, which quietly undid the reason it exists: the
+    # header below says this job is what stops the Apple heads rotting
+    # unnoticed, and a job that only runs when somebody remembers to
+    # trigger it does not do that. Between the two, three pull requests
+    # merged without Apple/**/*.cs being compiled once.
 
     steps:
       - name: Checkout hand
