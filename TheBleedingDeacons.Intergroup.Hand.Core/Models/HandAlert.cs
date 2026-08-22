@@ -117,6 +117,33 @@ public partial class HandAlert : ObservableObject
 	[JsonConverter(typeof(AlertPayloadConverter))]
 	public Dictionary<string, string> Payload { get; set; } = new(StringComparer.Ordinal);
 
+	/// <summary>Shown when the alert arrived with nothing sealed in it.</summary>
+	public const string UnsealedMessage = "Alert not secured — sign in again";
+
+	/// <summary>Shown when the sealed alert would not open with this handset's key.</summary>
+	public const string UnopenableMessage = "Alert could not be read — sign in again";
+
+	/// <summary>
+	/// Whether the readable half of this alert is missing.
+	///
+	/// <para>True means the title is an instruction rather than the alert's
+	/// own words, so anything that treats the title as content — a log
+	/// line, a list row — can tell the difference.</para>
+	/// </summary>
+	public bool IsUnreadable { get; private set; }
+
+	/// <summary>
+	/// Replace the readable half with an instruction the responder can
+	/// act on. The reference goes too: there is nothing to look up.
+	/// </summary>
+	private void SetUnreadable(string message)
+	{
+		IsUnreadable = true;
+		Title = message;
+		Body = "This handset could not read the alert. Sign in again to fix it.";
+		Reference = string.Empty;
+	}
+
 	public bool IsUrgent =>
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
 
@@ -209,24 +236,35 @@ public partial class HandAlert : ObservableObject
 
 		// Reach seals the readable fields to this handset's own key, so
 		// they arrive as one ciphertext rather than as title/body/reference.
-		// An older server sends them in the clear and there is nothing to
-		// open, which is why this is conditional rather than required.
 		//
-		// A ciphertext that will not open leaves the three fields empty and
-		// the alert otherwise intact. That is deliberate: the handset still
-		// knows the alert exists, what kind it is and when it expires, so it
-		// can still ring. A responder woken by an alert they cannot read
-		// will phone in; one never woken at all will not.
+		// Anything else is a fault, and shows as one. An alert that arrived
+		// unsealed means the server does not know this handset's key; an
+		// alert that will not open means the key here is wrong. Both are
+		// fixed the same way — sign in again — and both used to be hidden,
+		// the first by quietly showing plaintext and the second by quietly
+		// showing nothing.
+		//
+		// The alert is still returned, and still rings. It keeps its id,
+		// kind, urgency and expiry, so the handset knows something is
+		// happening; what it shows instead of the text is an instruction
+		// the responder can act on. Someone woken by an alert they cannot
+		// read will phone in. Someone never woken will not.
+		//
+		// Falls through rather than returning early: an alert nobody can
+		// read still carries the raising plugin's extras, and the loop
+		// below is what collects them.
 		var sealed_ = Value(data, "ciphertext");
-		if (sealed_.Length > 0)
+		var opened = sealed_.Length == 0 ? null : AlertPayloadCipher.Open(sealed_, payloadKey);
+
+		if (opened is not null)
 		{
-			var opened = AlertPayloadCipher.Open(sealed_, payloadKey);
-			if (opened is not null)
-			{
-				alert.Title = opened.Title;
-				alert.Body = opened.Body;
-				alert.Reference = opened.Reference;
-			}
+			alert.Title = opened.Title;
+			alert.Body = opened.Body;
+			alert.Reference = opened.Reference;
+		}
+		else
+		{
+			alert.SetUnreadable(sealed_.Length == 0 ? UnsealedMessage : UnopenableMessage);
 		}
 
 		// Anything the raising plugin added travels alongside the fields

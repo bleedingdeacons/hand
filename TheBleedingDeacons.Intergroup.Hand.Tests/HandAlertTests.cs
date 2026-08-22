@@ -14,6 +14,37 @@ namespace TheBleedingDeacons.Intergroup.Hand.Tests;
 /// </summary>
 public sealed class HandAlertTests
 {
+	/// <summary>
+	/// The key these tests seal and open with. Fixed rather than random so
+	/// a failure is reproducible.
+	/// </summary>
+	private static readonly byte[] TestKey = System.Text.Encoding.UTF8.GetBytes("0123456789abcdef0123456789abcdef");
+
+	private static string TestKeyBase64 => Convert.ToBase64String(TestKey);
+
+	/// <summary>
+	/// Seal the readable half the way Reach does, so a test can send the
+	/// shape a handset actually receives.
+	/// </summary>
+	private static string Seal(string title, string body, string reference)
+	{
+		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+		var plaintext = System.Text.Encoding.UTF8.GetBytes(
+			System.Text.Json.JsonSerializer.Serialize(new AlertText
+			{
+				Title = title,
+				Body = body,
+				Reference = reference,
+			}));
+		var ciphertext = new byte[plaintext.Length];
+		var tag = new byte[16];
+
+		using var gcm = new System.Security.Cryptography.AesGcm(TestKey, 16);
+		gcm.Encrypt(nonce, plaintext, ciphertext, tag);
+
+		return Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]);
+	}
+
 	[Fact]
 	public void FromPushData_ReadsEveryField()
 	{
@@ -23,13 +54,11 @@ public sealed class HandAlertTests
 			["kind"] = "shift_uncovered",
 			["source"] = "trusted",
 			["priority"] = "urgent",
-			["title"] = "Shift uncovered",
-			["body"] = "Nobody is on the helpline.",
-			["reference"] = "SHIFT-2026-08-15-N",
+			["ciphertext"] = Seal("Shift uncovered", "Nobody is on the helpline.", "SHIFT-2026-08-15-N"),
 			["created_at"] = "1755250000",
 			["expires_at"] = "1755253600",
 			["has_contact"] = "1",
-		});
+		}, TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(4242, alert.Id);
@@ -85,8 +114,10 @@ public sealed class HandAlertTests
 
 		Assert.NotNull(alert);
 		Assert.Equal(string.Empty, alert.Kind);
-		Assert.Equal(string.Empty, alert.Title);
-		Assert.Equal(string.Empty, alert.Reference);
+		// Nothing sealed, so the readable half is the fault message rather
+		// than the empty strings this used to leave behind.
+		Assert.True(alert.IsUnreadable);
+		Assert.Equal(HandAlert.UnsealedMessage, alert.Title);
 		Assert.Equal(0, alert.CreatedAt);
 		Assert.Equal(0, alert.ExpiresAt);
 		Assert.False(alert.HasContact);
@@ -309,9 +340,8 @@ public sealed class HandAlertTests
 
 	/// <summary>
 	/// A handset that cannot open the payload still knows an alert exists,
-	/// what kind it is and when it expires — so it can still ring. One
-	/// woken by an alert they cannot read will phone in; one never woken
-	/// will not.
+	/// what kind it is and when it expires — so it can still ring — and
+	/// says plainly what is wrong instead of showing a blank alert.
 	/// </summary>
 	[Fact]
 	public void FromPushData_StillYieldsAnAlertWhenThePayloadWillNotOpen()
@@ -331,27 +361,66 @@ public sealed class HandAlertTests
 		Assert.Equal(9, alert.Id);
 		Assert.Equal("call_request", alert.Kind);
 		Assert.True(alert.IsUrgent);
-		Assert.Equal(string.Empty, alert.Title);
+		Assert.True(alert.IsUnreadable);
+		Assert.Equal(HandAlert.UnopenableMessage, alert.Title);
+		Assert.Contains("Sign in again", alert.Body, StringComparison.Ordinal);
 	}
 
 	/// <summary>
-	/// An older server, or a handset with no key, sends the fields in the
-	/// clear. Nothing to open, and nothing to break.
+	/// An alert that arrived with nothing sealed in it is a fault, not a
+	/// fallback: it means the server does not know this handset's key.
+	///
+	/// <para>Showing the plaintext would hide that, and hide it
+	/// permanently — everything would keep working while the text this
+	/// whole feature exists to protect crossed Google in the clear.</para>
 	/// </summary>
 	[Fact]
-	public void FromPushData_LeavesPlaintextAlone()
+	public void FromPushData_TreatsAnUnsealedAlertAsAFault()
 	{
 		var alert = HandAlert.FromPushData(
 			new Dictionary<string, string>(StringComparer.Ordinal)
 			{
 				["alert_id"] = "9",
-				["title"] = "Callback wanted",
+				["kind"] = "call_request",
+				["title"] = "Callback wanted for Joanne",
 				["body"] = "Wanted in BS5",
 			});
 
 		Assert.NotNull(alert);
+		Assert.Equal(9, alert.Id);
+		Assert.True(alert.IsUnreadable);
+		Assert.Equal(HandAlert.UnsealedMessage, alert.Title);
+		Assert.DoesNotContain("Joanne", alert.Title, StringComparison.Ordinal);
+		Assert.DoesNotContain("Joanne", alert.Body, StringComparison.Ordinal);
+	}
+
+	/// <summary>A sealed alert that opens is not flagged as a fault.</summary>
+	[Fact]
+	public void FromPushData_DoesNotFlagAnAlertThatOpened()
+	{
+		var key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+		var plaintext = System.Text.Encoding.UTF8.GetBytes(
+			"""{"title":"Callback wanted","body":"BS5","reference":"CR-1"}""");
+		var ciphertext = new byte[plaintext.Length];
+		var tag = new byte[16];
+
+		using (var gcm = new System.Security.Cryptography.AesGcm(key, 16))
+		{
+			gcm.Encrypt(nonce, plaintext, ciphertext, tag);
+		}
+
+		var alert = HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "9",
+				["ciphertext"] = Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]),
+			},
+			Convert.ToBase64String(key));
+
+		Assert.NotNull(alert);
+		Assert.False(alert.IsUnreadable);
 		Assert.Equal("Callback wanted", alert.Title);
-		Assert.Equal("Wanted in BS5", alert.Body);
 	}
 
 	/// <summary>
