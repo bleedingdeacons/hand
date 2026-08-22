@@ -177,7 +177,7 @@ public partial class HandAlert : ObservableObject
 	/// forever — so that case returns null and the poll picks the alert
 	/// up properly instead.
 	/// </remarks>
-	public static HandAlert? FromPushData(IDictionary<string, string> data)
+	public static HandAlert? FromPushData(IDictionary<string, string> data, string payloadKey = "")
 	{
 		ArgumentNullException.ThrowIfNull(data);
 
@@ -207,6 +207,28 @@ public partial class HandAlert : ObservableObject
 			HasContact = Value(data, "has_contact") is "1" or "true",
 		};
 
+		// Reach seals the readable fields to this handset's own key, so
+		// they arrive as one ciphertext rather than as title/body/reference.
+		// An older server sends them in the clear and there is nothing to
+		// open, which is why this is conditional rather than required.
+		//
+		// A ciphertext that will not open leaves the three fields empty and
+		// the alert otherwise intact. That is deliberate: the handset still
+		// knows the alert exists, what kind it is and when it expires, so it
+		// can still ring. A responder woken by an alert they cannot read
+		// will phone in; one never woken at all will not.
+		var sealed_ = Value(data, "ciphertext");
+		if (sealed_.Length > 0)
+		{
+			var opened = AlertPayloadCipher.Open(sealed_, payloadKey);
+			if (opened is not null)
+			{
+				alert.Title = opened.Title;
+				alert.Body = opened.Body;
+				alert.Reference = opened.Reference;
+			}
+		}
+
 		// Anything the raising plugin added travels alongside the fields
 		// above. The reserved names are dropped so a plugin's own "title"
 		// does not reappear as a payload entry.
@@ -225,6 +247,7 @@ public partial class HandAlert : ObservableObject
 	{
 		"alert_id", "kind", "source", "priority", "title", "body",
 		"reference", "created_at", "expires_at", "channel", "sound",
+		"ciphertext",
 		"has_contact",
 	};
 

@@ -270,6 +270,91 @@ public sealed class HandAlertTests
 	}
 
 	/// <summary>
+	/// A push whose readable half is encrypted. This is the shape Reach
+	/// sends to any Android handset that holds a payload key.
+	/// </summary>
+	[Fact]
+	public void FromPushData_OpensAnEncryptedPayload()
+	{
+		var key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+		var plaintext = System.Text.Encoding.UTF8.GetBytes(
+			"""{"title":"Callback wanted CR-9","body":"Wanted in BS5","reference":"CR-9"}""");
+		var ciphertext = new byte[plaintext.Length];
+		var tag = new byte[16];
+
+		using (var gcm = new System.Security.Cryptography.AesGcm(key, 16))
+		{
+			gcm.Encrypt(nonce, plaintext, ciphertext, tag);
+		}
+
+		var alert = HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "9",
+				["kind"] = "call_request",
+				["ciphertext"] = Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]),
+			},
+			Convert.ToBase64String(key));
+
+		Assert.NotNull(alert);
+		Assert.Equal("Callback wanted CR-9", alert.Title);
+		Assert.Equal("Wanted in BS5", alert.Body);
+		Assert.Equal("CR-9", alert.Reference);
+
+		// The sealed blob must not survive as a payload entry, or the
+		// ciphertext would be shown wherever extras are displayed.
+		Assert.False(alert.Payload.ContainsKey("ciphertext"));
+	}
+
+	/// <summary>
+	/// A handset that cannot open the payload still knows an alert exists,
+	/// what kind it is and when it expires — so it can still ring. One
+	/// woken by an alert they cannot read will phone in; one never woken
+	/// will not.
+	/// </summary>
+	[Fact]
+	public void FromPushData_StillYieldsAnAlertWhenThePayloadWillNotOpen()
+	{
+		var alert = HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "9",
+				["kind"] = "call_request",
+				["priority"] = "urgent",
+				["ciphertext"] = Convert.ToBase64String(
+					System.Security.Cryptography.RandomNumberGenerator.GetBytes(64)),
+			},
+			Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)));
+
+		Assert.NotNull(alert);
+		Assert.Equal(9, alert.Id);
+		Assert.Equal("call_request", alert.Kind);
+		Assert.True(alert.IsUrgent);
+		Assert.Equal(string.Empty, alert.Title);
+	}
+
+	/// <summary>
+	/// An older server, or a handset with no key, sends the fields in the
+	/// clear. Nothing to open, and nothing to break.
+	/// </summary>
+	[Fact]
+	public void FromPushData_LeavesPlaintextAlone()
+	{
+		var alert = HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "9",
+				["title"] = "Callback wanted",
+				["body"] = "Wanted in BS5",
+			});
+
+		Assert.NotNull(alert);
+		Assert.Equal("Callback wanted", alert.Title);
+		Assert.Equal("Wanted in BS5", alert.Body);
+	}
+
+	/// <summary>
 	/// What a secure lock screen may show. The Android presenter hands these
 	/// two values to the public version of the notification, so anything
 	/// that leaked into them would be readable by whoever is standing near

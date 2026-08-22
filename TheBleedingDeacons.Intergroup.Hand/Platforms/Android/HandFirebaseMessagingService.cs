@@ -59,7 +59,18 @@ public sealed class HandFirebaseMessagingService : FirebaseMessagingService
 				return;
 			}
 
-			var alert = HandAlert.FromPushData(data);
+			// Read from secure storage on the delivery path rather than
+			// cached in a field: this service is created and destroyed by
+			// Android at will, so there is no instance lifetime to cache
+			// against, and a key read once at construction would be a key
+			// this handset kept using after signing out.
+			//
+			// Blocking on it is deliberate. OnMessageReceived has no async
+			// form, and returning before the notification is posted is how
+			// an alert silently never arrives.
+			var payloadKey = HeadlessAlerts.PayloadKey();
+
+			var alert = HandAlert.FromPushData(data, payloadKey);
 			if (alert is null)
 			{
 				// No usable id: the alert could never be acknowledged, so it

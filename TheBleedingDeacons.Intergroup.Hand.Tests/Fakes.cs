@@ -52,6 +52,8 @@ internal sealed class FakeConfigurationService : IConfigurationService
 
 	public string DeviceToken { get; set; } = string.Empty;
 
+	public string PayloadKey { get; set; } = string.Empty;
+
 	public int ClearCount { get; private set; }
 
 	public BetterStackConfiguration BetterStack { get; set; } = new();
@@ -78,6 +80,20 @@ internal sealed class FakeConfigurationService : IConfigurationService
 	{
 		ClearCount++;
 		DeviceToken = string.Empty;
+		return Task.CompletedTask;
+	}
+
+	public Task<string> GetPayloadKeyAsync() => Task.FromResult(PayloadKey);
+
+	public Task SavePayloadKeyAsync(string key)
+	{
+		PayloadKey = key;
+		return Task.CompletedTask;
+	}
+
+	public Task ClearPayloadKeyAsync()
+	{
+		PayloadKey = string.Empty;
 		return Task.CompletedTask;
 	}
 
