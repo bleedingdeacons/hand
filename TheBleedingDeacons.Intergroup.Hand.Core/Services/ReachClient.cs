@@ -166,6 +166,17 @@ public sealed class ReachClient : IReachClient
 		return Collapse(result);
 	}
 
+	public async Task<ReachResult<bool>> ReportUnreadableAsync(string token, CancellationToken cancellationToken)
+	{
+		var result = await PostAsync<JsonElement>(
+			"alerts/unreadable",
+			new Dictionary<string, string>(StringComparer.Ordinal),
+			token,
+			cancellationToken).ConfigureAwait(false);
+
+		return Collapse(result);
+	}
+
 	public async Task<ReachResult<string>> GetContactAsync(
 		string token, long alertId, CancellationToken cancellationToken)
 	{

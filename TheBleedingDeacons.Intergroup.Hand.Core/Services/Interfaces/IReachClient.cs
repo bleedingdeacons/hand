@@ -49,4 +49,17 @@ public interface IReachClient
 	/// actually asks — not speculatively alongside the alert.</para>
 	/// </summary>
 	Task<ReachResult<string>> GetContactAsync(string token, long alertId, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Tell Reach this handset could not read an alert.
+	///
+	/// <para>Reach can see that a device row has no key. It cannot see a
+	/// handset whose own copy has gone, so the handset has to say — and
+	/// until it does, the only symptom is a responder who does not
+	/// answer.</para>
+	///
+	/// <para>Carries nothing but the fact. The remedy is the same whatever
+	/// the cause, so there is no reason to send one.</para>
+	/// </summary>
+	Task<ReachResult<bool>> ReportUnreadableAsync(string token, CancellationToken cancellationToken);
 }

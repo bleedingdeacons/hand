@@ -243,6 +243,15 @@ internal sealed class FakeReachClient : IReachClient
 		ContactsRequested.Add(alertId);
 		return Task.FromResult(Contact);
 	}
+
+	/// <summary>How many times the handset said it cannot read its alerts.</summary>
+	public int UnreadableReports { get; private set; }
+
+	public Task<ReachResult<bool>> ReportUnreadableAsync(string token, CancellationToken cancellationToken)
+	{
+		UnreadableReports++;
+		return Task.FromResult(ReachResult<bool>.Ok(true));
+	}
 }
 
 /// <summary>Shorthand for building alerts in tests.</summary>
