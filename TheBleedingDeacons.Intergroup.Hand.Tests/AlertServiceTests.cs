@@ -26,6 +26,95 @@ public sealed class AlertServiceTests
 
 	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher);
 
+	/// <summary>
+	/// An alert the handset could not read is reported to Reach.
+	///
+	/// <para>Reach can see that a device row has no key; it cannot see a
+	/// handset whose own copy has gone. Until the handset says so, the
+	/// only symptom is a responder who does not answer.</para>
+	/// </summary>
+	[Fact]
+	public async Task HandlePushAsync_ReportsAnAlertItCouldNotRead()
+	{
+		_config.DeviceToken = "a-token";
+		var service = Build();
+
+		await service.HandlePushAsync(Unreadable());
+
+		Assert.Equal(1, _reach.UnreadableReports);
+	}
+
+	/// <summary>
+	/// Once per run, not once per alert. The fault belongs to the handset
+	/// rather than to any one alert, and a handset that can read nothing
+	/// would otherwise report on everything it receives.
+	/// </summary>
+	[Fact]
+	public async Task HandlePushAsync_ReportsTheFaultOnlyOnce()
+	{
+		_config.DeviceToken = "a-token";
+		var service = Build();
+
+		await service.HandlePushAsync(Unreadable(1));
+		await service.HandlePushAsync(Unreadable(2));
+		await service.HandlePushAsync(Unreadable(3));
+
+		Assert.Equal(1, _reach.UnreadableReports);
+	}
+
+	[Fact]
+	public async Task HandlePushAsync_DoesNotReportAnAlertItCouldRead()
+	{
+		_config.DeviceToken = "a-token";
+		var service = Build();
+
+		await service.HandlePushAsync(Alerts.New(expiresAt: DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds()));
+
+		Assert.Equal(0, _reach.UnreadableReports);
+	}
+
+	[Fact]
+	public async Task HandlePushAsync_SaysNothingWithNoTokenToSayItWith()
+	{
+		// Signed out. There is nothing to authenticate the report with, and
+		// an unauthenticated one would be refused anyway.
+		_config.DeviceToken = string.Empty;
+		var service = Build();
+
+		await service.HandlePushAsync(Unreadable());
+
+		Assert.Equal(0, _reach.UnreadableReports);
+	}
+
+	/// <summary>
+	/// An expired unreadable alert is still reported. It is evidence the
+	/// handset cannot read what it is sent, and a handset in that state
+	/// may only ever see late ones — nobody is opening the app to make a
+	/// fresh one arrive, because nobody is being woken.
+	/// </summary>
+	[Fact]
+	public async Task HandlePushAsync_ReportsEvenWhenTheAlertHasExpired()
+	{
+		_config.DeviceToken = "a-token";
+		var service = Build();
+
+		await service.HandlePushAsync(Unreadable(expiresAt: 1));
+
+		Assert.Equal(1, _reach.UnreadableReports);
+	}
+
+	/// <summary>An alert as it arrives when the payload will not open.</summary>
+	private static HandAlert Unreadable(long id = 1, long expiresAt = 0) =>
+		HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+				["kind"] = "call_request",
+				["expires_at"] = (expiresAt == 0
+					? DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds()
+					: expiresAt).ToString(System.Globalization.CultureInfo.InvariantCulture),
+			})!;
+
 	[Fact]
 	public void Constructor_RefusesItsDependenciesBeingNull()
 	{

@@ -270,6 +270,50 @@ public sealed class AlertService : IAlertService, IDisposable
 	/// <summary>
 	/// The single door an alert comes through, whichever route it took.
 	/// </summary>
+	/// <summary>
+	/// Whether this run has already told Reach about the fault.
+	///
+	/// <para>Once per run, not once per alert. The fault is a property of
+	/// the handset rather than of any one alert, the server records the
+	/// same thing every time, and a handset that cannot read anything
+	/// would otherwise report on every alert it receives — most of it
+	/// while nobody is watching. Resetting on relaunch is deliberate: it
+	/// is the cheapest way to keep the timestamp fresh for an admin
+	/// deciding whether this broke last night or last spring.</para>
+	/// </summary>
+	private bool _reportedUnreadable;
+
+	/// <summary>
+	/// Tell Reach the alerts cannot be read. Failures are swallowed: this
+	/// is a diagnostic, and a handset that cannot reach the server has a
+	/// larger problem which its own logging already covers.
+	/// </summary>
+	private async Task ReportUnreadableAsync()
+	{
+		if (_reportedUnreadable)
+		{
+			return;
+		}
+
+		_reportedUnreadable = true;
+
+		try
+		{
+			var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+			if (token.Length == 0)
+			{
+				return;
+			}
+
+			await _reach.ReportUnreadableAsync(token, CancellationToken.None).ConfigureAwait(false);
+			Log.Warning("Told Reach this handset cannot read its alerts");
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Could not tell Reach this handset cannot read its alerts");
+		}
+	}
+
 	private async Task AdmitAsync(HandAlert alert)
 	{
 		// The removal notice is an instruction, not an alert, so it turns
@@ -283,6 +327,15 @@ public sealed class AlertService : IAlertService, IDisposable
 		{
 			await HandleRemovalNoticeAsync().ConfigureAwait(false);
 			return;
+		}
+
+		// Reported before the expiry check, not after. An expired alert is
+		// still evidence that this handset cannot read what it is sent, and
+		// a handset in that state may only ever see late ones — it is not
+		// being woken, so nobody opens the app to make a fresh one arrive.
+		if (alert.IsUnreadable)
+		{
+			await ReportUnreadableAsync().ConfigureAwait(false);
 		}
 
 		var now = DateTimeOffset.UtcNow;
