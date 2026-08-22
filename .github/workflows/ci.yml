@@ -13,13 +13,15 @@ name: CI
 #                    TargetFrameworks), and it is the only head that reports the
 #                    WinRT/CsWinRT analyzers — MVVMTK0045 and friends are
 #                    invisible to the Ubuntu job.
-#  * build-apple   — the same gate for the iOS and MacCatalyst heads, which can
-#                    only be built on macOS. This is the job Register does not
-#                    have, and not having it is precisely how Register's Apple
-#                    heads came to rot unnoticed. Hand has real code that no
-#                    other job compiles at all — Apple/**/*.cs is included only
-#                    for these two target frameworks — so without this the
-#                    Apple-only sources were never once built by CI.
+#  * build-apple   — the iOS and MacCatalyst heads, which can only be built on
+#                    macOS. MANUAL: it runs on workflow_dispatch only, so it is
+#                    not a gate and nothing here compiles Apple/**/*.cs on a
+#                    pull request. Those sources are included only for these
+#                    two target frameworks, so between manual runs they are
+#                    built by nothing at all — which is how Register's Apple
+#                    heads came to rot, and is a known, accepted cost here
+#                    rather than an oversight. Run it before a release and
+#                    whenever Apple code changes.
 #  * test          — run the xUnit v3 suite over Hand.Core (the MAUI-free half
 #                    of the app) with Coverlet coverage, and upload the report
 #                    to Coveralls. Ubuntu, no workload: Hand.Core and its tests
@@ -166,12 +168,21 @@ jobs:
   build-apple:
     name: Build & analyze (net10.0-ios, net10.0-maccatalyst)
     runs-on: macos-latest
-    # Runs on every push and pull request, like the other three. It was
-    # manual for a while, which quietly undid the reason it exists: the
-    # header below says this job is what stops the Apple heads rotting
-    # unnoticed, and a job that only runs when somebody remembers to
-    # trigger it does not do that. Between the two, three pull requests
-    # merged without Apple/**/*.cs being compiled once.
+    # Manual, by choice. Run it from the Actions tab when Apple/**/*.cs
+    # or the iOS heads change, and before a release.
+    #
+    # This is the second time it has been made manual, and the first time
+    # is why the header above no longer claims it guards anything: it was
+    # gated the same way for a stretch in which three pull requests
+    # touching Hand merged without Apple/**/*.cs being compiled once,
+    # while the header still described it as the job that stops those
+    # sources rotting. The gate was not the problem — the description
+    # that had stopped matching it was.
+    #
+    # So if this is ever made automatic again, fix the header in the same
+    # commit. A CI file that lies about its own coverage is worse than
+    # one that covers less.
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout hand
