@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		The app half of the pair. It must match the extension's exactly:
+		the shared keychain group is the only way the extension can read
+		the payload key this app stores, because an extension runs in its
+		own process with its own keychain partition.
+
+		The group must be registered against the team in the Apple
+		Developer account. Without that, everything compiles and the
+		extension simply reads nothing — a failure that looks like a
+		missing key rather than a missing entitlement.
+	-->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)group.com.bleedingdeacons.hand</string>
+	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.bleedingdeacons.hand</string>
+	</array>
+</dict>
+</plist>

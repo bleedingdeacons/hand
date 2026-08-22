@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		The iOS Notification Service Extension.
+
+		Its own project because it has to be: an app extension is a separate
+		binary that iOS launches in its own process, and MAUI's single-project
+		model has no way to express one. The app references it, which is what
+		gets it bundled into the .app.
+
+		net10.0-ios only. There is no Android equivalent to build — Android
+		already hands the push to Hand's own messaging service, which is why
+		Android could decrypt without any of this.
+
+		OutputType Exe with IsAppExtension is the shape .NET for iOS expects;
+		the extension has an entry point of its own even though nothing calls
+		it directly.
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net10.0-ios</TargetFramework>
+		<OutputType>Exe</OutputType>
+		<IsAppExtension>true</IsAppExtension>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>TheBleedingDeacons.Intergroup.Hand.NotificationService</RootNamespace>
+
+		<!-- Matching the app head. See its csproj on why 15.0. -->
+		<SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+
+		<!--
+			The extension is not the app: it must not carry MAUI, and it must
+			stay small. iOS gives a service extension roughly 30 seconds and a
+			tight memory budget, and a bundle that drags the whole framework in
+			is how an extension gets killed before it finishes.
+		-->
+		<UseMaui>false</UseMaui>
+		<SingleProject>false</SingleProject>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="Info.plist" LogicalName="Info.plist" />
+	</ItemGroup>
+
+	<!--
+		Hand.Core is the MAUI-free half of the app, which is exactly why the
+		extension can share it: AlertPayloadCipher and AlertText live there and
+		are plain net10.0 with no platform dependency. The alternative was a
+		second copy of the decryption, which is the one thing in this feature
+		that must not exist twice.
+	-->
+	<ItemGroup>
+		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.Core\TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
+	</ItemGroup>
+
+</Project>

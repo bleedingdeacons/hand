@@ -199,6 +199,54 @@
 		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.Core\TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
 	</ItemGroup>
 
+	<!--
+		iOS only, and three separate things.
+
+		The notification extension is referenced so it gets built and bundled
+		into the .app; IsAppExtension is what tells the iOS SDK this is an
+		embedded extension rather than an ordinary library. Nothing in the app
+		calls into it - iOS launches it.
+
+		SharedKeychain is compiled into both from the one file rather than
+		copied. It decides which keychain entry the payload key lives in, and
+		two answers to that question is exactly how the app and the extension
+		end up looking in different places.
+
+		The entitlements carry the shared keychain access group. Both bundles
+		must declare the same one, and it must be registered against the team
+		in the Apple Developer account - without that everything compiles and
+		the extension reads nothing.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.NotificationService\TheBleedingDeacons.Intergroup.Hand.NotificationService.csproj">
+			<IsAppExtension>true</IsAppExtension>
+		</ProjectReference>
+		<Compile Include="..\TheBleedingDeacons.Intergroup.Hand.NotificationService\SharedKeychain.cs" Link="Apple\SharedKeychain.cs" />
+	</ItemGroup>
+
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+		<CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
+	</PropertyGroup>
+
+	<!--
+		NOTE: the iOS head cannot be built by CI while these entitlements are
+		declared. Xamarin.Shared.targets runs signing-identity detection as
+		soon as a project has entitlements, and a GitHub runner has neither a
+		certificate nor a provisioning profile, so the build stops at "No
+		valid iOS code signing keys found in keychain" before compiling.
+		Targeting the simulator does not avoid it; the detection is keyed on
+		the entitlements, not on the destination.
+
+		The entitlements stay unconditional anyway. Making them depend on
+		whether a key happens to be present would let a device build ship
+		without the shared keychain group, and the extension would then read
+		nothing while looking perfectly healthy - which is precisely the
+		failure this feature exists to prevent.
+
+		Verifying the iOS head therefore needs either a signing identity and
+		a profile carrying the App Group installed on the runner, or a Mac.
+	-->
+
 	<ItemGroup>
 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
