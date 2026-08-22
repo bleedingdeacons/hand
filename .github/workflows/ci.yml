@@ -13,15 +13,18 @@ name: CI
 #                    TargetFrameworks), and it is the only head that reports the
 #                    WinRT/CsWinRT analyzers — MVVMTK0045 and friends are
 #                    invisible to the Ubuntu job.
-#  * build-apple   — the iOS and MacCatalyst heads, which can only be built on
-#                    macOS. MANUAL: it runs on workflow_dispatch only, so it is
-#                    not a gate and nothing here compiles Apple/**/*.cs on a
-#                    pull request. Those sources are included only for these
-#                    two target frameworks, so between manual runs they are
-#                    built by nothing at all — which is how Register's Apple
-#                    heads came to rot, and is a known, accepted cost here
-#                    rather than an oversight. Run it before a release and
-#                    whenever Apple code changes.
+#  * build-apple   — the MacCatalyst head, which can only be built on macOS.
+#                    MANUAL: workflow_dispatch only, so it is not a gate and
+#                    nothing compiles Apple/**/*.cs on a pull request. Between
+#                    manual runs those sources are built by nothing at all —
+#                    a known, accepted cost rather than an oversight. Run it
+#                    before a release and whenever Apple code changes.
+#
+#                    The iOS head is NOT built here or anywhere: its
+#                    entitlements force signing-identity detection and no
+#                    runner has a certificate. See the note on the job. The
+#                    notification service extension is therefore unbuilt
+#                    source until somebody compiles it on a Mac.
 #  * test          — run the xUnit v3 suite over Hand.Core (the MAUI-free half
 #                    of the app) with Coverlet coverage, and upload the report
 #                    to Coveralls. Ubuntu, no workload: Hand.Core and its tests
@@ -166,7 +169,7 @@ jobs:
           -p:ContinuousIntegrationBuild=true
 
   build-apple:
-    name: Build & analyze (net10.0-ios, net10.0-maccatalyst)
+    name: Build & analyze (net10.0-maccatalyst)
     runs-on: macos-latest
     # Manual, by choice. Run it from the Actions tab when Apple/**/*.cs
     # or the iOS heads change, and before a release.
@@ -199,12 +202,29 @@ jobs:
         run: dotnet workload install maui-ios maui-maccatalyst
 
       # No code signing and no provisioning profile, and none is needed: this is
-      # a Debug build with no RuntimeIdentifier, which targets the simulator and
-      # does not sign. The csproj sets no signing properties for these heads at
-      # all, so there is nothing here to opt out of — if that ever changes, this
-      # job is where it will show up first.
+      # a Debug build with no RuntimeIdentifier, which does not sign.
       #
-      # HandAppleOnly narrows TargetFrameworks to the two Apple heads so this
+      # MACCATALYST ONLY, AND THE iOS HEAD IS NOT BUILT ANYWHERE. That head
+      # declares entitlements — the shared keychain group the notification
+      # service extension needs — and Xamarin.Shared.targets runs
+      # signing-identity detection as soon as a project has any, then stops
+      # at "No valid iOS code signing keys found in keychain". A runner has
+      # neither a certificate nor a provisioning profile, and targeting the
+      # simulator does not avoid it: the detection is keyed on the
+      # entitlements, not the destination.
+      #
+      # The entitlements are not made conditional to get round this. Dropping
+      # them when no key is present would let a device build ship without the
+      # keychain group, and the extension would read nothing while looking
+      # perfectly healthy — the failure the whole feature exists to prevent.
+      #
+      # MacCatalyst still compiles every Apple/**/*.cs source, so what this
+      # job was written to protect is still protected. What is unbuilt is the
+      # iOS head's own bundling and the extension project. Building those
+      # needs a signing identity and a profile carrying the App Group,
+      # installed on the runner or present on a Mac.
+      #
+      # HandMacCatalystOnly narrows TargetFrameworks to the one head so this
       # runner needs no Android or Windows workload. As in the other jobs, do
       # NOT substitute -f: that sets TargetFramework as a global property and
       # breaks restore with NU1105. UseDevCredentials is off for the reason the
@@ -213,7 +233,7 @@ jobs:
         run: >
           dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
           -c Debug
-          -p:HandAppleOnly=true
+          -p:HandMacCatalystOnly=true
           -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
 
