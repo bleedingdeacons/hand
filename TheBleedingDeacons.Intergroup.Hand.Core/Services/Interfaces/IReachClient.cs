@@ -26,9 +26,25 @@ public interface IReachClient
 	/// <summary>Who this handset is, and whether it is still allowed.</summary>
 	Task<ReachResult<DeviceSession>> GetSessionAsync(string token, CancellationToken cancellationToken);
 
-	/// <summary>Record a rotated push registration token.</summary>
+	/// <summary>
+	/// Record a rotated push registration token, and say what this
+	/// handset's lock screen does with alert text.
+	///
+	/// <para><paramref name="lockScreen"/> rides along here rather than
+	/// having a call of its own, because Hand re-registers its token at
+	/// every launch anyway as the backstop against a silently rotated
+	/// one. That makes the report as fresh as a setting its owner can
+	/// change at any moment is ever going to be, for no extra request.
+	/// Empty means "cannot tell", which the server reads as "said
+	/// nothing" and leaves whatever it already held — so a handset that
+	/// cannot tell never clears a warning raised when it could.</para>
+	/// </summary>
 	Task<ReachResult<bool>> UpdatePushTokenAsync(
-		string token, string pushProvider, string pushToken, CancellationToken cancellationToken);
+		string token,
+		string pushProvider,
+		string pushToken,
+		string lockScreen,
+		CancellationToken cancellationToken);
 
 	/// <summary>Revoke this handset's token.</summary>
 	Task<ReachResult<bool>> SignOutAsync(string token, CancellationToken cancellationToken);

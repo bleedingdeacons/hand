@@ -125,6 +125,7 @@ public static class MauiProgram
 		// ── Hand services ─────────────────────────────────────────────
 		builder.Services.AddSingleton<IReachClient, ReachClient>();
 		builder.Services.AddSingleton<IPushRegistrar, PushRegistrar>();
+		builder.Services.AddSingleton<ILockScreenPrivacy, LockScreenPrivacy>();
 		builder.Services.AddSingleton<IDeviceAuthService, DeviceAuthService>();
 
 		// The alarm owns audio and vibration and must outlive any page: an

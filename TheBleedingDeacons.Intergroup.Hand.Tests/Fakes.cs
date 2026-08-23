@@ -218,9 +218,20 @@ internal sealed class FakeReachClient : IReachClient
 		return Task.FromResult(Session);
 	}
 
+	/// <summary>The lock-screen state of the last push registration.</summary>
+	public string LastLockScreen { get; private set; } = "not called";
+
 	public Task<ReachResult<bool>> UpdatePushTokenAsync(
-		string token, string pushProvider, string pushToken, CancellationToken cancellationToken) =>
-		Task.FromResult(ReachResult<bool>.Ok(true));
+		string token,
+		string pushProvider,
+		string pushToken,
+		string lockScreen,
+		CancellationToken cancellationToken)
+	{
+		LastLockScreen = lockScreen;
+
+		return Task.FromResult(ReachResult<bool>.Ok(true));
+	}
 
 	public Task<ReachResult<bool>> SignOutAsync(string token, CancellationToken cancellationToken) =>
 		Task.FromResult(ReachResult<bool>.Ok(true));

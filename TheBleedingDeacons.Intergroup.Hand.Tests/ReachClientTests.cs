@@ -182,8 +182,38 @@ public sealed class ReachClientTests
 		var (client, handler) = Ok("{}");
 
 		Assert.True((await client.SignOutAsync("t", CancellationToken.None)).Success);
-		Assert.True((await client.UpdatePushTokenAsync("t", "fcm", "tok", CancellationToken.None)).Success);
+		Assert.True((await client.UpdatePushTokenAsync("t", "fcm", "tok", "hidden", CancellationToken.None)).Success);
 		Assert.Contains("push_provider=fcm", handler.Bodies[1], StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// The lock-screen report rides on the push registration, which Hand
+	/// makes at every launch anyway.
+	/// </summary>
+	[Fact]
+	public async Task PushUpdateCarriesTheLockScreenState()
+	{
+		var (client, handler) = Ok("{}");
+
+		await client.UpdatePushTokenAsync("t", "fcm", "tok", "shown", CancellationToken.None);
+
+		Assert.Contains("lock_screen=shown", handler.Bodies[0], StringComparison.Ordinal);
+	}
+
+    /// <summary>
+    /// A handset that cannot tell sends nothing rather than sending
+    /// empty. The server reads an absent field as "no news" and keeps
+    /// what it already holds, so a build or a platform that cannot read
+    /// the setting can never clear a warning raised by one that could.
+    /// </summary>
+	[Fact]
+	public async Task PushUpdateOmitsAnUnknownLockScreenRatherThanSendingItEmpty()
+	{
+		var (client, handler) = Ok("{}");
+
+		await client.UpdatePushTokenAsync("t", "fcm", "tok", string.Empty, CancellationToken.None);
+
+		Assert.DoesNotContain("lock_screen", handler.Bodies[0], StringComparison.Ordinal);
 	}
 
 	// ── Responses ─────────────────────────────────────────────────────
