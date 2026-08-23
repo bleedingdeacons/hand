@@ -224,17 +224,27 @@ public sealed class AlertPayloadCipherTests
 	/// <summary>
 	/// The worst case Reach's own caps allow — title 200, body 1000,
 	/// reference 64, and 2000 bytes of plugin payload — has to fit FCM's
-	/// 4KB data message. Sealed and base64'd without compression it does
-	/// not, which is why the format gzips first.
+	/// 4KB data message. That is 3433 bytes of JSON, which seals and
+	/// base64s to 4616 without compression: over the limit, which is why
+	/// the format gzips first.
+	///
+	/// <para>Random hex rather than repeated characters, deliberately. A
+	/// worst case built from <c>new string('a', 2000)</c> compresses to
+	/// almost nothing and would go on passing long after the real margin
+	/// had gone. This is content the gzip cannot help with, and it seals
+	/// to about 2.7KB.</para>
 	/// </summary>
 	[Fact]
 	public void Open_HandlesTheLargestPayloadReachWillSend()
 	{
+		var body = Convert.ToHexString(RandomNumberGenerator.GetBytes(500));
+		var area = Convert.ToHexString(RandomNumberGenerator.GetBytes(1000));
+
 		var payload = Payload();
-		payload["title"] = new string('t', 200);
-		payload["body"] = new string('b', 1000);
-		payload["reference"] = new string('r', 64);
-		payload["area"] = new string('a', 2000);
+		payload["title"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(100));
+		payload["body"] = body;
+		payload["reference"] = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+		payload["area"] = area;
 
 		var (ciphertext, key) = Seal(payload);
 
@@ -245,7 +255,7 @@ public sealed class AlertPayloadCipherTests
 		var opened = AlertPayloadCipher.Open(ciphertext, key);
 
 		Assert.NotNull(opened);
-		Assert.Equal(new string('b', 1000), opened["body"]);
-		Assert.Equal(new string('a', 2000), opened["area"]);
+		Assert.Equal(body, opened["body"]);
+		Assert.Equal(area, opened["area"]);
 	}
 }
