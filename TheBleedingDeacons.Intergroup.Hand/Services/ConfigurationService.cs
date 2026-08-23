@@ -27,7 +27,16 @@ public sealed class ConfigurationService : IConfigurationService
 	private const string DevCredentialsResource =
 		"TheBleedingDeacons.Intergroup.Hand.devsettings.json";
 
-	private const string DeviceTokenKey = "hand_device_token";
+	/// <summary>
+	/// Secure-storage key for this handset's device token.
+	///
+	/// <para>Internal for the same reason as <see cref="PayloadKeyKey"/>:
+	/// a push can arrive with no app behind it, and
+	/// <see cref="Platforms.Android.HeadlessAlerts"/> then has to
+	/// authenticate a fault report with no container to build this
+	/// service from.</para>
+	/// </summary>
+	internal const string DeviceTokenKey = "hand_device_token";
 	/// <summary>
 	/// Secure-storage key for the alert payload key.
 	///
@@ -40,6 +49,27 @@ public sealed class ConfigurationService : IConfigurationService
 	internal const string PayloadKeyKey = "hand_payload_key";
 	private const string DeviceLabelKey = "device_label";
 	private const string ReachBaseUrlKey = "reach_base_url";
+
+	/// <summary>
+	/// Where the last resolved server address is mirrored, for a reader
+	/// with no container.
+	///
+	/// <para>Not the same entry as <see cref="ReachBaseUrlKey"/> and
+	/// deliberately so. That one holds what a responder <i>chose</i>, and
+	/// is empty on a handset happily using the address built into the
+	/// package — which is most of them. This one holds whichever address
+	/// was actually used, wherever it came from, so
+	/// <see cref="Platforms.Android.HeadlessAlerts"/> can reach the server
+	/// without an <c>IConfiguration</c> to read the embedded settings
+	/// from.</para>
+	///
+	/// <para>Written only, never read back by
+	/// <see cref="GetReachConfiguration"/>. Folding it into that lookup
+	/// would make a stale mirror outrank a new build's built-in default,
+	/// so a rebuild pointed at a different server would be quietly
+	/// ignored.</para>
+	/// </summary>
+	internal const string ReachResolvedBaseUrlKey = "reach_base_url_resolved";
 	private const string ReachPollSecondsKey = "reach_poll_seconds";
 	private const string ReachOnDutyKey = "reach_on_duty";
 	private const string ReachPollEnabledKey = "reach_poll_enabled";
@@ -99,13 +129,27 @@ public sealed class ConfigurationService : IConfigurationService
 			pollSeconds = configured;
 		}
 
-		return new ReachConfiguration
+		var configuration = new ReachConfiguration
 		{
 			BaseUrl = baseUrl,
 			PollSeconds = pollSeconds > 0 ? pollSeconds : 20,
 			OnDuty = Preferences.Get(ReachOnDutyKey, true),
 			Poll = Preferences.Get(ReachPollEnabledKey, true),
 		}.Normalised();
+
+		// Mirrored for the headless reader. See ReachResolvedBaseUrlKey.
+		// Compared first because this runs on every REST call the app
+		// makes, and rewriting an unchanged value would put a preferences
+		// write behind each one.
+		if (!string.Equals(
+			Preferences.Get(ReachResolvedBaseUrlKey, string.Empty),
+			configuration.BaseUrl,
+			StringComparison.Ordinal))
+		{
+			Preferences.Set(ReachResolvedBaseUrlKey, configuration.BaseUrl);
+		}
+
+		return configuration;
 	}
 
 	public Task SaveReachConfigurationAsync(ReachConfiguration configuration)

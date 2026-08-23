@@ -14,9 +14,16 @@ namespace TheBleedingDeacons.Intergroup.Hand.Models;
 /// nothing that would identify a caller.</para>
 ///
 /// <para>The same shape arrives by two routes: parsed from the JSON body
-/// of a poll, and reassembled from the string map in an FCM data
-/// message. <see cref="FromPushData"/> is the second of those, which is
-/// why every field has to survive a round trip through strings.</para>
+/// of a poll, and reassembled from the string map sealed inside an FCM
+/// data message. <see cref="FromPushData"/> is the second of those,
+/// which is why every field has to survive a round trip through
+/// strings.</para>
+///
+/// <para>Only the push is encrypted. The poll is HTTPS straight to our
+/// own server and the payload key exists to keep content away from
+/// Google's push infrastructure, which the poll never touches — which is
+/// also what lets the poll go on working as the fallback when a
+/// handset's key is broken.</para>
 /// </summary>
 public partial class HandAlert : ObservableObject
 {
@@ -117,33 +124,6 @@ public partial class HandAlert : ObservableObject
 	[JsonConverter(typeof(AlertPayloadConverter))]
 	public Dictionary<string, string> Payload { get; set; } = new(StringComparer.Ordinal);
 
-	/// <summary>Shown when the alert arrived with nothing sealed in it.</summary>
-	public const string UnsealedMessage = "Alert not secured — sign in again";
-
-	/// <summary>Shown when the sealed alert would not open with this handset's key.</summary>
-	public const string UnopenableMessage = "Alert could not be read — sign in again";
-
-	/// <summary>
-	/// Whether the readable half of this alert is missing.
-	///
-	/// <para>True means the title is an instruction rather than the alert's
-	/// own words, so anything that treats the title as content — a log
-	/// line, a list row — can tell the difference.</para>
-	/// </summary>
-	public bool IsUnreadable { get; private set; }
-
-	/// <summary>
-	/// Replace the readable half with an instruction the responder can
-	/// act on. The reference goes too: there is nothing to look up.
-	/// </summary>
-	private void SetUnreadable(string message)
-	{
-		IsUnreadable = true;
-		Title = message;
-		Body = "This handset could not read the alert. Sign in again to fix it.";
-		Reference = string.Empty;
-	}
-
 	public bool IsUrgent =>
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
 
@@ -197,23 +177,49 @@ public partial class HandAlert : ObservableObject
 	/// Rebuild an alert from an FCM data payload.
 	/// </summary>
 	/// <remarks>
-	/// FCM's data block is a string→string map, so every value arrives as
-	/// text and the numbers have to be parsed back. A message that has
-	/// lost its id is not usable — the id is what the acknowledgement is
-	/// keyed on, and an alert that cannot be acknowledged would ring
-	/// forever — so that case returns null and the poll picks the alert
-	/// up properly instead.
+	/// <para><b>The payload is one sealed blob.</b> Reach encrypts the
+	/// whole data map to this handset's own key and sends it as a single
+	/// <c>ciphertext</c> field, so everything below is read out of what
+	/// that opens into rather than off the push itself. Nothing readable
+	/// crosses Google, whatever the alert happens to contain.</para>
+	///
+	/// <para><b>Null is the answer to every fault, and there are three of
+	/// them.</b> A push with no <c>ciphertext</c> did not come from a
+	/// server that knows this handset's key, and is not a legitimate
+	/// message; one that will not open means the key here is wrong; one
+	/// that opens without a usable id could never be acknowledged and
+	/// would ring until the battery went. None is shown to the responder.
+	/// The caller reports the fault so a broken handset appears on
+	/// Reach's devices screen instead of going quiet — see
+	/// <c>HandFirebaseMessagingService.OnMessageReceived</c> — and the
+	/// poll, which is unencrypted HTTPS to our own server, still delivers
+	/// the alert by the slower route.</para>
+	///
+	/// <para>Inside the blob everything is still a string, because FCM's
+	/// data block is a string→string map and the server builds the sealed
+	/// JSON from the same shape. So the numbers still have to be parsed
+	/// back, under the invariant culture: these values were written by the
+	/// server, not by the person holding the phone, and parsing them under
+	/// the device's locale would make a handset in a locale with different
+	/// digit conventions read them differently from every other handset on
+	/// the rota.</para>
 	/// </remarks>
 	public static HandAlert? FromPushData(IDictionary<string, string> data, string payloadKey = "")
 	{
 		ArgumentNullException.ThrowIfNull(data);
 
-		// Invariant culture throughout: these values were written by the
-		// server, not by the person holding the phone. Parsing them under
-		// the device's locale would make a handset in a locale with
-		// different digit or separator conventions read them differently
-		// from every other handset on the rota.
-		if (!data.TryGetValue("alert_id", out var rawId)
+		if (!data.TryGetValue("ciphertext", out var sealedPayload) || sealedPayload.Length == 0)
+		{
+			return null;
+		}
+
+		var opened = AlertPayloadCipher.Open(sealedPayload, payloadKey);
+		if (opened is null)
+		{
+			return null;
+		}
+
+		if (!opened.TryGetValue("alert_id", out var rawId)
 			|| !long.TryParse(rawId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
 			|| id <= 0)
 		{
@@ -223,54 +229,21 @@ public partial class HandAlert : ObservableObject
 		var alert = new HandAlert
 		{
 			Id = id,
-			Kind = Value(data, "kind"),
-			Source = Value(data, "source"),
-			Priority = Value(data, "priority"),
-			Title = Value(data, "title"),
-			Body = Value(data, "body"),
-			Reference = Value(data, "reference"),
-			CreatedAt = Number(data, "created_at"),
-			ExpiresAt = Number(data, "expires_at"),
-			HasContact = Value(data, "has_contact") is "1" or "true",
+			Kind = Value(opened, "kind"),
+			Source = Value(opened, "source"),
+			Priority = Value(opened, "priority"),
+			Title = Value(opened, "title"),
+			Body = Value(opened, "body"),
+			Reference = Value(opened, "reference"),
+			CreatedAt = Number(opened, "created_at"),
+			ExpiresAt = Number(opened, "expires_at"),
+			HasContact = Value(opened, "has_contact") is "1" or "true",
 		};
-
-		// Reach seals the readable fields to this handset's own key, so
-		// they arrive as one ciphertext rather than as title/body/reference.
-		//
-		// Anything else is a fault, and shows as one. An alert that arrived
-		// unsealed means the server does not know this handset's key; an
-		// alert that will not open means the key here is wrong. Both are
-		// fixed the same way — sign in again — and both used to be hidden,
-		// the first by quietly showing plaintext and the second by quietly
-		// showing nothing.
-		//
-		// The alert is still returned, and still rings. It keeps its id,
-		// kind, urgency and expiry, so the handset knows something is
-		// happening; what it shows instead of the text is an instruction
-		// the responder can act on. Someone woken by an alert they cannot
-		// read will phone in. Someone never woken will not.
-		//
-		// Falls through rather than returning early: an alert nobody can
-		// read still carries the raising plugin's extras, and the loop
-		// below is what collects them.
-		var sealed_ = Value(data, "ciphertext");
-		var opened = sealed_.Length == 0 ? null : AlertPayloadCipher.Open(sealed_, payloadKey);
-
-		if (opened is not null)
-		{
-			alert.Title = opened.Title;
-			alert.Body = opened.Body;
-			alert.Reference = opened.Reference;
-		}
-		else
-		{
-			alert.SetUnreadable(sealed_.Length == 0 ? UnsealedMessage : UnopenableMessage);
-		}
 
 		// Anything the raising plugin added travels alongside the fields
 		// above. The reserved names are dropped so a plugin's own "title"
 		// does not reappear as a payload entry.
-		foreach (var pair in data)
+		foreach (var pair in opened)
 		{
 			if (!ReservedKeys.Contains(pair.Key))
 			{
@@ -285,8 +258,14 @@ public partial class HandAlert : ObservableObject
 	{
 		"alert_id", "kind", "source", "priority", "title", "body",
 		"reference", "created_at", "expires_at", "channel", "sound",
-		"ciphertext",
 		"has_contact",
+
+		// Not a field the server puts inside the blob — it is the blob's
+		// own name, out on the push. Reserved anyway because the server
+		// merges a plugin's extras into the map it seals, so a plugin
+		// with an extra of this name would otherwise land a stray copy
+		// wherever payload entries are displayed.
+		"ciphertext",
 	};
 
 	private static string Value(IDictionary<string, string> data, string key) =>

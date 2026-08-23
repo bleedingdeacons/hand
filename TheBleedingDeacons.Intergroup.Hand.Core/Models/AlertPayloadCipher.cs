@@ -1,27 +1,31 @@
+using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace TheBleedingDeacons.Intergroup.Hand.Models;
 
 /// <summary>
-/// Opens the encrypted half of an alert.
+/// Opens a pushed alert.
 ///
-/// <para>Reach encrypts an alert's title, body and reference to a secret
-/// this handset was given once, at enrolment, and sends the result as a
-/// single <c>ciphertext</c> field. Everything else in the push stays
-/// readable, because this app needs it before it can open anything —
-/// which alert to acknowledge, whether this is the removal notice that
-/// must never alarm, how urgent it is, and when it expires.</para>
+/// <para>Reach encrypts the <b>whole</b> data payload to a secret this
+/// handset was given once, at enrolment, and sends the result as a
+/// single <c>ciphertext</c> field. Not the readable half of it — all of
+/// it, including the id, the kind, the priority and whatever extras the
+/// raising plugin attached. Nothing else travels alongside.</para>
 ///
-/// <para>The point is that Google carries ciphertext. A push crosses
-/// Firebase's servers and lands in a notification history; a caller's
-/// situation has no business in either.</para>
+/// <para>The point is that Google carries ciphertext and nothing else. A
+/// push crosses Firebase's servers and lands in a notification history;
+/// an alert is supposed to carry no personal data, but that is a
+/// convention the server enforces by capping and stripping rather than
+/// by reading meaning, and encrypting the lot removes the question
+/// instead of policing it.</para>
 ///
-/// <para>AES-256-GCM, with the envelope Reach packs: 12 bytes of nonce,
-/// then the 16-byte tag, then the ciphertext, all base64. GCM
+/// <para>AES-256-GCM over gzip, with the envelope Reach packs: 12 bytes
+/// of nonce, then the 16-byte tag, then the ciphertext, all base64. GCM
 /// authenticates, so a payload altered in transit fails to open rather
-/// than decrypting to something plausible.</para>
+/// than decrypting to something plausible. The gzip is not for
+/// tidiness — sealing and base64'ing the largest payload the server will
+/// accept overflows FCM's 4KB limit without it.</para>
 /// </summary>
 public static class AlertPayloadCipher
 {
@@ -30,15 +34,17 @@ public static class AlertPayloadCipher
 	private const int KeyBytes = 32;
 
 	/// <summary>
-	/// The three fields the ciphertext carries, or null when it cannot be
+	/// The payload the ciphertext carries, or null when it cannot be
 	/// opened.
 	///
 	/// <para>Null covers every reason at once — no key, a key that does
-	/// not fit, a truncated payload, a tampered one — because the caller
-	/// can do nothing different about any of them. What it does about all
-	/// of them is ring anyway; see the handler.</para>
+	/// not fit, a truncated payload, a tampered one, something that
+	/// decompresses to a shape this does not recognise — because the
+	/// caller can do nothing different about any of them. What it does
+	/// about all of them is ignore the push and tell the server this
+	/// handset is broken; see <see cref="HandAlert.FromPushData"/>.</para>
 	/// </summary>
-	public static AlertText? Open(string ciphertext, string base64Key)
+	public static Dictionary<string, string>? Open(string ciphertext, string base64Key)
 	{
 		if (string.IsNullOrEmpty(ciphertext) || string.IsNullOrEmpty(base64Key))
 		{
@@ -58,12 +64,12 @@ public static class AlertPayloadCipher
 		var nonce = packed.AsSpan(0, NonceBytes);
 		var tag = packed.AsSpan(NonceBytes, TagBytes);
 		var body = packed.AsSpan(NonceBytes + TagBytes);
-		var plaintext = new byte[body.Length];
+		var compressed = new byte[body.Length];
 
 		try
 		{
 			using var gcm = new AesGcm(key, TagBytes);
-			gcm.Decrypt(nonce, body, tag, plaintext);
+			gcm.Decrypt(nonce, body, tag, compressed);
 		}
 		catch (CryptographicException)
 		{
@@ -72,15 +78,53 @@ public static class AlertPayloadCipher
 			return null;
 		}
 
+		var json = Inflate(compressed);
+		if (json is null)
+		{
+			return null;
+		}
+
 		try
 		{
-			return JsonSerializer.Deserialize<AlertText>(Encoding.UTF8.GetString(plaintext));
+			var opened = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+
+			// Ordinal throughout, matching the map FCM hands the platform
+			// and the one HandAlert reads from. A case-insensitive lookup
+			// here would let a plugin extra named "Kind" shadow the alert's
+			// own, which is the collision the server's own merge order
+			// exists to prevent.
+			return opened is null ? null : new Dictionary<string, string>(opened, StringComparer.Ordinal);
 		}
 		catch (JsonException)
 		{
-			// Decrypted to something that is not the shape expected. Only
-			// reachable if the two ends disagree about the format, which is
-			// worth failing softly rather than throwing into a push handler.
+			// Decrypted and decompressed to something that is not a
+			// string→string map. Only reachable if the two ends disagree
+			// about the format, which is worth failing softly rather than
+			// throwing into a push handler.
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Undo the server's <c>gzencode</c>, or null if it will not undo.
+	/// </summary>
+	private static byte[]? Inflate(byte[] compressed)
+	{
+		try
+		{
+			using var source = new MemoryStream(compressed, writable: false);
+			using var gzip = new GZipStream(source, CompressionMode.Decompress);
+			using var inflated = new MemoryStream();
+
+			gzip.CopyTo(inflated);
+
+			return inflated.ToArray();
+		}
+		catch (InvalidDataException)
+		{
+			// Decrypted cleanly but is not gzip. The tag verified, so this
+			// is the two ends disagreeing about the format rather than
+			// anything an attacker did.
 			return null;
 		}
 	}
