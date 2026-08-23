@@ -115,17 +115,29 @@ public sealed class ReachClient : IReachClient
 	}
 
 	public async Task<ReachResult<bool>> UpdatePushTokenAsync(
-		string token, string pushProvider, string pushToken, CancellationToken cancellationToken)
+		string token,
+		string pushProvider,
+		string pushToken,
+		string lockScreen,
+		CancellationToken cancellationToken)
 	{
+		var body = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["push_provider"] = pushProvider,
+			["push_token"] = pushToken,
+		};
+
+		// Omitted rather than sent empty when this handset cannot tell.
+		// The server reads an absent field as "no news" and keeps what it
+		// already holds; an empty one would have to be given the same
+		// meaning again at the far end to be no worse.
+		if (lockScreen.Length > 0)
+		{
+			body["lock_screen"] = lockScreen;
+		}
+
 		var result = await PostAsync<JsonElement>(
-			"auth/device/push",
-			new Dictionary<string, string>(StringComparer.Ordinal)
-			{
-				["push_provider"] = pushProvider,
-				["push_token"] = pushToken,
-			},
-			token,
-			cancellationToken).ConfigureAwait(false);
+			"auth/device/push", body, token, cancellationToken).ConfigureAwait(false);
 
 		return Collapse(result);
 	}

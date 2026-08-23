@@ -181,6 +181,16 @@ public sealed partial class PlatformAlertPresenter
 		// PIN or biometric there is nothing to redact behind, and Android
 		// shows the real notification. That is the user's decision to have
 		// made, and not one the app can override.
+		//
+		// The same is true of a secure lock screen whose owner has chosen
+		// to show all notification content, which is the commoner case by
+		// far and the one this used to leave unsaid. Android then ignores
+		// the public version below and puts the alert's own words in front
+		// of whoever is standing there. Setting this is still worth doing —
+		// it is the whole of what an app may do, and it works for everyone
+		// who has chosen to hide sensitive content — but it is an offer
+		// rather than a guarantee, and the difference is what
+		// LockScreenPrivacy exists to report.
 		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
 		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
 

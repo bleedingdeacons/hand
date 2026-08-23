@@ -128,7 +128,7 @@ public partial class HandAlert : ObservableObject
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
-	/// What a secure lock screen is allowed to show in place of the alert.
+	/// What a secure lock screen is <i>offered</i> in place of the alert.
 	///
 	/// <para>Reach already refuses to put personal data in an alert, so in
 	/// principle <see cref="Title"/> is safe to display. This does not rely
@@ -137,6 +137,18 @@ public partial class HandAlert : ObservableObject
 	/// administrator's custom message — is validated for length and markup
 	/// but not for meaning. Redacting whatever the payload happens to hold
 	/// costs a tap to read and removes the whole question.</para>
+	///
+	/// <para><b>Offered, not imposed — and the difference matters.</b> The
+	/// Android presenter marks the notification private and hands the
+	/// system this as its public version, which is the whole of what an
+	/// app may do. Android substitutes it only where the phone's owner has
+	/// chosen to hide sensitive content; where they have chosen to show
+	/// everything, which is the default on many devices, the alert's own
+	/// words go on the lock screen and nothing here can stop it. So this
+	/// property is what a redacted lock screen <i>would</i> say, not a
+	/// promise about what a given handset shows. Hand reports which it is
+	/// doing — see <c>ILockScreenPrivacy</c> — so an intergroup can see
+	/// the handsets that are reading alerts out to the room.</para>
 	///
 	/// <para>Deliberately carries nothing from the payload at all, not even
 	/// <see cref="Reference"/>. A reference is non-identifying by design and

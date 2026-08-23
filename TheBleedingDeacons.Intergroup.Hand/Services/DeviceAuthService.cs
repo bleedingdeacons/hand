@@ -26,15 +26,18 @@ public sealed class DeviceAuthService : IDeviceAuthService
 	private readonly IReachClient _reach;
 	private readonly IConfigurationService _configuration;
 	private readonly IPushRegistrar _push;
+	private readonly ILockScreenPrivacy _lockScreen;
 
 	public DeviceAuthService(
 		IReachClient reach,
 		IConfigurationService configuration,
-		IPushRegistrar push)
+		IPushRegistrar push,
+		ILockScreenPrivacy lockScreen)
 	{
 		_reach = reach ?? throw new ArgumentNullException(nameof(reach));
 		_configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 		_push = push ?? throw new ArgumentNullException(nameof(push));
+		_lockScreen = lockScreen ?? throw new ArgumentNullException(nameof(lockScreen));
 	}
 
 	public DeviceSession? Current { get; private set; }
@@ -198,7 +201,7 @@ public sealed class DeviceAuthService : IDeviceAuthService
 		}
 
 		var result = await _reach
-			.UpdatePushTokenAsync(token, _push.Provider, pushToken, cancellationToken)
+			.UpdatePushTokenAsync(token, _push.Provider, pushToken, _lockScreen.State, cancellationToken)
 			.ConfigureAwait(false);
 
 		if (result.Success)
@@ -219,7 +222,24 @@ public sealed class DeviceAuthService : IDeviceAuthService
 			return;
 		}
 
-		await _reach.UpdatePushTokenAsync(deviceToken, provider, pushToken, cancellationToken)
+		// This is the one that runs at every launch, so it is the one
+		// that keeps the lock-screen report current. Read here rather than
+		// cached in a field: it is a setting its owner can change while
+		// the app is running.
+		var lockScreen = _lockScreen.State;
+
+		// Logged because otherwise nothing on either side can say what
+		// this handset actually read. An admin looking at "Alerts readable
+		// when locked" on Reach's devices screen has no way to check it
+		// from there, and the read itself is the part most likely to be
+		// wrong — it goes through a Settings.Secure key that returns a
+		// plausible answer rather than failing when it cannot help.
+		Log.Information(
+			"Lock screen reported as {LockScreen}",
+			lockScreen.Length == 0 ? "not known" : lockScreen);
+
+		await _reach
+			.UpdatePushTokenAsync(deviceToken, provider, pushToken, lockScreen, cancellationToken)
 			.ConfigureAwait(false);
 	}
 
