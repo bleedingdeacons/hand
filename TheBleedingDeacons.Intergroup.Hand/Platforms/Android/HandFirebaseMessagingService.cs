@@ -73,9 +73,7 @@ public sealed class HandFirebaseMessagingService : FirebaseMessagingService
 			var alert = HandAlert.FromPushData(data, payloadKey);
 			if (alert is null)
 			{
-				// No usable id: the alert could never be acknowledged, so it
-				// would ring forever. The poll picks it up properly instead.
-				Log.Warning("Push message could not be read as an alert; leaving it to the poll");
+				Refuse(data);
 				return;
 			}
 
@@ -85,6 +83,70 @@ public sealed class HandFirebaseMessagingService : FirebaseMessagingService
 		{
 			// Never throw out of a platform callback on the delivery path.
 			Log.Error(ex, "Push message could not be processed");
+		}
+	}
+
+	/// <summary>
+	/// Nothing usable arrived. Work out whether that is worth telling
+	/// Reach about, and say nothing to the responder either way.
+	/// </summary>
+	/// <remarks>
+	/// <para><b>A push that carried no <c>ciphertext</c> is not a message
+	/// from this server.</b> Reach seals the whole data payload to this
+	/// handset's own key and sends nothing beside it, so an unencrypted
+	/// one is either something else entirely or a server that has
+	/// forgotten this handset. It is dropped without comment; there is
+	/// nothing here that is safe to show and nothing to report.</para>
+	///
+	/// <para><b>A push that carried one and would not open is a broken
+	/// handset</b>, and the whole point of reporting is that a handset
+	/// which has quietly stopped ringing must not stay invisible. The
+	/// responder is told nothing — the alert is still coming, by the poll,
+	/// which is unencrypted HTTPS to our own server and unaffected by a
+	/// bad key — but the fault reaches Reach's devices screen, where an
+	/// administrator can see it and ask them to sign in again.</para>
+	///
+	/// <para>Through <c>IAlertService</c> when the app is up, because that
+	/// is where the once-per-run flag lives and a handset that can open
+	/// nothing would otherwise report on every push it receives. Through
+	/// <see cref="HeadlessAlerts.ReportUnreadable"/> when it is not, which
+	/// is the case the report matters most in: nobody is being woken, so
+	/// nobody is opening the app to notice.</para>
+	/// </remarks>
+	private static void Refuse(IDictionary<string, string> data)
+	{
+		if (!data.ContainsKey("ciphertext"))
+		{
+			Log.Warning("Push message arrived unencrypted; ignoring it");
+			return;
+		}
+
+		Log.Error("Push message could not be opened with this handset's key; ignoring it");
+
+		var alerts = Resolve<IAlertService>();
+
+		if (alerts is null)
+		{
+			HeadlessAlerts.ReportUnreadable();
+			return;
+		}
+
+		try
+		{
+			// Bounded and blocking, like everything else on this callback:
+			// returning early drops the wakelock that is keeping the process
+			// alive. Not on the main thread, where blocking would deadlock
+			// against the UI marshalling AlertService does — see Wait.
+			if (!MainThread.IsMainThread)
+			{
+				alerts.ReportUnreadableAsync().Wait(DeliveryBudget);
+			}
+		}
+		catch (Exception ex)
+		{
+			// The report swallows its own failures, so this is only ever a
+			// fault in the waiting. Nothing to do about it but say so.
+			Log.Warning(ex, "Could not tell Reach this handset cannot read its alerts");
 		}
 	}
 

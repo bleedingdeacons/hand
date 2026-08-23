@@ -15,6 +15,15 @@ namespace TheBleedingDeacons.Intergroup.Hand.NotificationService;
 /// in between, an encrypted alert would put base64 in front of whoever
 /// is standing near the phone. This is that something.</para>
 ///
+/// <para><b>Not compiled by anything yet, and iOS is still sent
+/// plaintext.</b> The extension needs its own project, an App Group
+/// entitlement the app does not have, the payload key moved to a shared
+/// keychain, and Apple provisioning — none of it doable without a Mac
+/// and a developer account to hand, so <c>FcmTransport</c> encrypts for
+/// Android only and leaves the <c>aps</c> path alone. This is kept in
+/// step with the format it will one day open, so that when the hardware
+/// exists the work is provisioning rather than archaeology.</para>
+///
 /// <para>iOS launches it for any push carrying <c>mutable-content: 1</c>,
 /// gives it roughly thirty seconds, and shows whatever it hands back —
 /// or the original payload if it runs out of time. So the work here is
@@ -70,16 +79,23 @@ public sealed class NotificationService : UNNotificationServiceExtension
 		if (opened is null)
 		{
 			// The key is missing or wrong. Say so where the responder will
-			// see it, rather than showing them ciphertext or nothing —
-			// the same wording the app uses for the same condition.
-			_content.Title = HandAlert.UnopenableMessage;
-			_content.Body = "This handset could not read the alert. Sign in again to fix it.";
+			// see it, rather than showing them ciphertext or nothing.
+			//
+			// Deliberately different from Android, which ignores a push it
+			// cannot open and leaves the alert to the poll. iOS has no
+			// poll worth the name — a terminated app runs no timer — so
+			// dropping this notification would drop the alert, and the
+			// alert is the thing that gets someone out of bed.
+			_content.Title = UnopenableTitle;
+			_content.Body = UnopenableBody;
 			contentHandler(_content);
 			return;
 		}
 
-		_content.Title = opened.Title;
-		_content.Body = opened.Body;
+		// The whole payload is sealed, not just the readable half, so
+		// these come out of the decrypted map like everything else.
+		_content.Title = Field(opened, "title");
+		_content.Body = Field(opened, "body");
 
 		contentHandler(_content);
 	}
@@ -102,11 +118,29 @@ public sealed class NotificationService : UNNotificationServiceExtension
 
 		if (_content is not null)
 		{
-			_content.Title = HandAlert.UnopenableMessage;
+			_content.Title = UnopenableTitle;
 			_content.Body = "This handset could not read the alert in time.";
 			_deliver(_content);
 		}
 	}
+
+	/// <summary>
+	/// What the lock screen says when the payload will not open.
+	///
+	/// <para>Local constants rather than shared with <c>HandAlert</c>,
+	/// which no longer has any: the app's Android path shows nothing at
+	/// all for this condition, so there is no wording left to share. See
+	/// <see cref="DidReceiveNotificationRequest"/> for why the two heads
+	/// differ.</para>
+	/// </summary>
+	private const string UnopenableTitle = "Alert could not be read — sign in again";
+
+	private const string UnopenableBody =
+		"This handset could not read the alert. Sign in again to fix it.";
+
+	/// <summary>One field out of the opened payload, or empty.</summary>
+	private static string Field(IDictionary<string, string> opened, string key) =>
+		opened.TryGetValue(key, out var value) ? value : string.Empty;
 
 	/// <summary>
 	/// One string out of the userInfo dictionary, or empty.

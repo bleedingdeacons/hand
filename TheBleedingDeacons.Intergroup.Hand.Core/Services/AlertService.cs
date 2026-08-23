@@ -273,10 +273,10 @@ public sealed class AlertService : IAlertService, IDisposable
 	/// <summary>
 	/// Whether this run has already told Reach about the fault.
 	///
-	/// <para>Once per run, not once per alert. The fault is a property of
+	/// <para>Once per run, not once per push. The fault is a property of
 	/// the handset rather than of any one alert, the server records the
 	/// same thing every time, and a handset that cannot read anything
-	/// would otherwise report on every alert it receives — most of it
+	/// would otherwise report on every message it receives — most of it
 	/// while nobody is watching. Resetting on relaunch is deliberate: it
 	/// is the cheapest way to keep the timestamp fresh for an admin
 	/// deciding whether this broke last night or last spring.</para>
@@ -288,7 +288,7 @@ public sealed class AlertService : IAlertService, IDisposable
 	/// is a diagnostic, and a handset that cannot reach the server has a
 	/// larger problem which its own logging already covers.
 	/// </summary>
-	private async Task ReportUnreadableAsync()
+	public async Task ReportUnreadableAsync()
 	{
 		if (_reportedUnreadable)
 		{
@@ -327,15 +327,6 @@ public sealed class AlertService : IAlertService, IDisposable
 		{
 			await HandleRemovalNoticeAsync().ConfigureAwait(false);
 			return;
-		}
-
-		// Reported before the expiry check, not after. An expired alert is
-		// still evidence that this handset cannot read what it is sent, and
-		// a handset in that state may only ever see late ones — it is not
-		// being woken, so nobody opens the app to make a fresh one arrive.
-		if (alert.IsUnreadable)
-		{
-			await ReportUnreadableAsync().ConfigureAwait(false);
 		}
 
 		var now = DateTimeOffset.UtcNow;

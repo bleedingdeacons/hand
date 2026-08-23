@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Serilog;
 using TheBleedingDeacons.Intergroup.Hand.Models;
 using TheBleedingDeacons.Intergroup.Hand.Services;
@@ -41,8 +42,9 @@ internal static class HeadlessAlerts
 	/// <para>Blocking, because <c>OnMessageReceived</c> has no async form
 	/// and returning before the notification is posted is how an alert
 	/// silently never arrives. Empty on any failure — an unreadable key
-	/// is the same as no key, and Reach answers a handset it has no key
-	/// for in plaintext, so the alert still rings.</para>
+	/// is the same as no key, and either way the push cannot be opened
+	/// and is reported rather than shown; see
+	/// <see cref="ReportUnreadable"/>.</para>
 	/// </summary>
 	public static string PayloadKey()
 	{
@@ -57,6 +59,89 @@ internal static class HeadlessAlerts
 			return string.Empty;
 		}
 	}
+
+	/// <summary>
+	/// Tell Reach this handset cannot open what it is sent, with no app
+	/// behind the report.
+	/// </summary>
+	/// <remarks>
+	/// <para><b>Why "ignored" does not mean "silent".</b> A push that will
+	/// not open is not shown to the responder — there is nothing to show,
+	/// and inventing a fault notice to wake someone with was the thing
+	/// this replaced. But a handset that quietly stops ringing is exactly
+	/// the failure that has to be visible, and this report is what puts it
+	/// on Reach's devices screen. The alert itself is not lost: the poll
+	/// is unencrypted HTTPS to our own server and still delivers it.</para>
+	///
+	/// <para>Everything is read straight out of secure storage and
+	/// preferences, on the precedent <see cref="PayloadKey"/> already
+	/// sets: this runs on a push that started the messaging service, so
+	/// there may be no container to resolve <c>IReachClient</c> from and
+	/// no <c>ConfigurationService</c> to ask. The keys are shared with
+	/// that class so the two readers cannot drift on to different
+	/// entries.</para>
+	///
+	/// <para>Blocking and bounded, for the same reason as everything else
+	/// on this path, and silent on every failure. It is a diagnostic; a
+	/// handset that cannot reach the server has a larger problem, which
+	/// its own logging already covers.</para>
+	/// </remarks>
+	public static void ReportUnreadable()
+	{
+		try
+		{
+			var token = SecureStorage.GetAsync(ConfigurationService.DeviceTokenKey)
+				.GetAwaiter().GetResult() ?? string.Empty;
+
+			// Signed out. There is nothing to authenticate the report with,
+			// and an unauthenticated one would be refused anyway.
+			if (token.Length == 0)
+			{
+				return;
+			}
+
+			var baseUrl = Preferences.Get(ConfigurationService.ReachResolvedBaseUrlKey, string.Empty);
+			if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var root))
+			{
+				Log.Warning("This handset cannot read its alerts, and has no server address to say so to");
+				return;
+			}
+
+			using var http = new HttpClient { Timeout = ReportBudget };
+			using var request = new HttpRequestMessage(
+				HttpMethod.Post,
+				new Uri(root, "wp-json/reach/v1/alerts/unreadable"))
+			{
+				// Form-encoded and empty, matching ReachClient: WordPress's
+				// REST layer reads form fields into request parameters, which
+				// is what the controllers' registered validation runs against.
+				Content = new FormUrlEncodedContent([]),
+			};
+
+			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+			using var response = http.Send(request);
+
+			Log.Warning(
+				"Told Reach this handset cannot read its alerts ({Status})",
+				(int)response.StatusCode);
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Could not tell Reach this handset cannot read its alerts");
+		}
+	}
+
+	/// <summary>
+	/// How long the fault report may take before it is abandoned.
+	///
+	/// <para>Well inside the messaging service's own delivery budget,
+	/// because this runs on the same callback and the wakelock behind it
+	/// is not ours to overrun. Nothing is lost by giving up: the next
+	/// push reports again, the flag that suppresses repeats living in the
+	/// running app rather than here.</para>
+	/// </summary>
+	private static readonly TimeSpan ReportBudget = TimeSpan.FromSeconds(5);
 
 	/// <summary>
 	/// Show <paramref name="alert"/> if it is the kind of thing that

@@ -23,42 +23,63 @@ public sealed class HandAlertTests
 	private static string TestKeyBase64 => Convert.ToBase64String(TestKey);
 
 	/// <summary>
-	/// Seal the readable half the way Reach does, so a test can send the
+	/// Seal a whole data map the way Reach does — gzip, then AES-256-GCM,
+	/// nonce then tag then ciphertext, base64 — so a test can send the
 	/// shape a handset actually receives.
+	///
+	/// <para>Built here rather than by calling the app's own cipher: a
+	/// test that sealed with the code under test would pass just as
+	/// happily if both ends of the format changed together, and the two
+	/// ends ship from different repositories.</para>
 	/// </summary>
-	private static string Seal(string title, string body, string reference)
+	private static string Seal(IDictionary<string, string> payload, byte[]? key = null)
 	{
 		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
-		var plaintext = System.Text.Encoding.UTF8.GetBytes(
-			System.Text.Json.JsonSerializer.Serialize(new AlertText
-			{
-				Title = title,
-				Body = body,
-				Reference = reference,
-			}));
+
+		using var compressed = new MemoryStream();
+		using (var gzip = new System.IO.Compression.GZipStream(
+			compressed, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+		{
+			var raw = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
+			gzip.Write(raw, 0, raw.Length);
+		}
+
+		var plaintext = compressed.ToArray();
 		var ciphertext = new byte[plaintext.Length];
 		var tag = new byte[16];
 
-		using var gcm = new System.Security.Cryptography.AesGcm(TestKey, 16);
+		using var gcm = new System.Security.Cryptography.AesGcm(key ?? TestKey, 16);
 		gcm.Encrypt(nonce, plaintext, ciphertext, tag);
 
 		return Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]);
 	}
 
-	[Fact]
-	public void FromPushData_ReadsEveryField()
-	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
+	/// <summary>
+	/// A push as it arrives: one sealed blob and nothing beside it.
+	/// </summary>
+	private static Dictionary<string, string> Push(IDictionary<string, string> payload) =>
+		new(StringComparer.Ordinal) { ["ciphertext"] = Seal(payload) };
+
+	/// <summary>The sealed map for an ordinary alert.</summary>
+	private static Dictionary<string, string> Payload(long id = 4242) =>
+		new(StringComparer.Ordinal)
 		{
-			["alert_id"] = "4242",
+			["alert_id"] = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
 			["kind"] = "shift_uncovered",
 			["source"] = "trusted",
 			["priority"] = "urgent",
-			["ciphertext"] = Seal("Shift uncovered", "Nobody is on the helpline.", "SHIFT-2026-08-15-N"),
+			["title"] = "Shift uncovered",
+			["body"] = "Nobody is on the helpline.",
+			["reference"] = "SHIFT-2026-08-15-N",
 			["created_at"] = "1755250000",
 			["expires_at"] = "1755253600",
 			["has_contact"] = "1",
-		}, TestKeyBase64);
+		};
+
+	[Fact]
+	public void FromPushData_ReadsEveryField()
+	{
+		var alert = HandAlert.FromPushData(Push(Payload()), TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(4242, alert.Id);
@@ -87,18 +108,22 @@ public sealed class HandAlertTests
 	[InlineData("1.5")]
 	public void FromPushData_RefusesUnusableId(string rawId)
 	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
-		{
-			["alert_id"] = rawId,
-			["title"] = "Shift uncovered",
-		});
+		var alert = HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = rawId,
+				["title"] = "Shift uncovered",
+			}),
+			TestKeyBase64);
 
 		Assert.Null(alert);
 	}
 
 	[Fact]
 	public void FromPushData_RefusesAMessageWithNoIdAtAll() =>
-		Assert.Null(HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)));
+		Assert.Null(HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal)),
+			TestKeyBase64));
 
 	[Fact]
 	public void FromPushData_RejectsNull() =>
@@ -107,17 +132,13 @@ public sealed class HandAlertTests
 	[Fact]
 	public void FromPushData_DefaultsEveryFieldItWasNotSent()
 	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
-		{
-			["alert_id"] = "7",
-		});
+		var alert = HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal) { ["alert_id"] = "7" }),
+			TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(string.Empty, alert.Kind);
-		// Nothing sealed, so the readable half is the fault message rather
-		// than the empty strings this used to leave behind.
-		Assert.True(alert.IsUnreadable);
-		Assert.Equal(HandAlert.UnsealedMessage, alert.Title);
+		Assert.Equal(string.Empty, alert.Title);
 		Assert.Equal(0, alert.CreatedAt);
 		Assert.Equal(0, alert.ExpiresAt);
 		Assert.False(alert.HasContact);
@@ -132,11 +153,13 @@ public sealed class HandAlertTests
 	[Fact]
 	public void FromPushData_TreatsAnUnparseableTimestampAsAbsent()
 	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
-		{
-			["alert_id"] = "7",
-			["expires_at"] = "soon",
-		});
+		var alert = HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "7",
+				["expires_at"] = "soon",
+			}),
+			TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(0, alert.ExpiresAt);
@@ -152,11 +175,13 @@ public sealed class HandAlertTests
 	[InlineData("", false)]
 	public void FromPushData_ReadsHasContactAsTheServerSpellsIt(string raw, bool expected)
 	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
-		{
-			["alert_id"] = "7",
-			["has_contact"] = raw,
-		});
+		var alert = HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "7",
+				["has_contact"] = raw,
+			}),
+			TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(expected, alert.HasContact);
@@ -170,15 +195,17 @@ public sealed class HandAlertTests
 	[Fact]
 	public void FromPushData_KeepsPluginExtrasAndDropsReservedKeys()
 	{
-		var alert = HandAlert.FromPushData(new Dictionary<string, string>(StringComparer.Ordinal)
-		{
-			["alert_id"] = "7",
-			["title"] = "Shift uncovered",
-			["channel"] = "reach_alerts",
-			["sound"] = "reach_alert",
-			["rota_slot"] = "night",
-			["region"] = "bristol",
-		});
+		var alert = HandAlert.FromPushData(
+			Push(new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["alert_id"] = "7",
+				["title"] = "Shift uncovered",
+				["channel"] = "reach_alerts",
+				["sound"] = "reach_alert",
+				["rota_slot"] = "night",
+				["region"] = "bristol",
+			}),
+			TestKeyBase64);
 
 		Assert.NotNull(alert);
 		Assert.Equal(
@@ -301,81 +328,58 @@ public sealed class HandAlertTests
 	}
 
 	/// <summary>
-	/// A push whose readable half is encrypted. This is the shape Reach
-	/// sends to any Android handset that holds a payload key.
+	/// A push carries one sealed blob and nothing beside it, and this is
+	/// what opening it looks like end to end.
 	/// </summary>
 	[Fact]
-	public void FromPushData_OpensAnEncryptedPayload()
+	public void FromPushData_OpensASealedPush()
 	{
 		var key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
-		var plaintext = System.Text.Encoding.UTF8.GetBytes(
-			"""{"title":"Callback wanted CR-9","body":"Wanted in BS5","reference":"CR-9"}""");
-		var ciphertext = new byte[plaintext.Length];
-		var tag = new byte[16];
-
-		using (var gcm = new System.Security.Cryptography.AesGcm(key, 16))
-		{
-			gcm.Encrypt(nonce, plaintext, ciphertext, tag);
-		}
 
 		var alert = HandAlert.FromPushData(
 			new Dictionary<string, string>(StringComparer.Ordinal)
 			{
-				["alert_id"] = "9",
-				["kind"] = "call_request",
-				["ciphertext"] = Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]),
+				["ciphertext"] = Seal(
+					new Dictionary<string, string>(StringComparer.Ordinal)
+					{
+						["alert_id"] = "9",
+						["kind"] = "call_request",
+						["title"] = "Callback wanted CR-9",
+						["body"] = "Wanted in BS5",
+						["reference"] = "CR-9",
+						["area"] = "BS5",
+					},
+					key),
 			},
 			Convert.ToBase64String(key));
 
 		Assert.NotNull(alert);
+		Assert.Equal(9, alert.Id);
+		Assert.Equal("call_request", alert.Kind);
 		Assert.Equal("Callback wanted CR-9", alert.Title);
 		Assert.Equal("Wanted in BS5", alert.Body);
 		Assert.Equal("CR-9", alert.Reference);
 
-		// The sealed blob must not survive as a payload entry, or the
-		// ciphertext would be shown wherever extras are displayed.
+		// The raising plugin's extras were sealed alongside the rest and
+		// still come out as extras.
+		Assert.Equal("BS5", alert.Payload["area"]);
+
+		// The sealed blob's own name must not survive as a payload entry,
+		// or the ciphertext would be shown wherever extras are displayed.
 		Assert.False(alert.Payload.ContainsKey("ciphertext"));
 	}
 
 	/// <summary>
-	/// A handset that cannot open the payload still knows an alert exists,
-	/// what kind it is and when it expires — so it can still ring — and
-	/// says plainly what is wrong instead of showing a blank alert.
-	/// </summary>
-	[Fact]
-	public void FromPushData_StillYieldsAnAlertWhenThePayloadWillNotOpen()
-	{
-		var alert = HandAlert.FromPushData(
-			new Dictionary<string, string>(StringComparer.Ordinal)
-			{
-				["alert_id"] = "9",
-				["kind"] = "call_request",
-				["priority"] = "urgent",
-				["ciphertext"] = Convert.ToBase64String(
-					System.Security.Cryptography.RandomNumberGenerator.GetBytes(64)),
-			},
-			Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)));
-
-		Assert.NotNull(alert);
-		Assert.Equal(9, alert.Id);
-		Assert.Equal("call_request", alert.Kind);
-		Assert.True(alert.IsUrgent);
-		Assert.True(alert.IsUnreadable);
-		Assert.Equal(HandAlert.UnopenableMessage, alert.Title);
-		Assert.Contains("Sign in again", alert.Body, StringComparison.Ordinal);
-	}
-
-	/// <summary>
-	/// An alert that arrived with nothing sealed in it is a fault, not a
-	/// fallback: it means the server does not know this handset's key.
+	/// A push with nothing sealed in it is not a legitimate message from
+	/// this server, and is ignored outright.
 	///
-	/// <para>Showing the plaintext would hide that, and hide it
-	/// permanently — everything would keep working while the text this
-	/// whole feature exists to protect crossed Google in the clear.</para>
+	/// <para>Reach seals the whole data map and sends nothing beside it,
+	/// so there is no such thing as an unencrypted alert to fall back to
+	/// reading. Building one from these fields would mean a handset
+	/// happily displaying whatever anyone managed to push at it.</para>
 	/// </summary>
 	[Fact]
-	public void FromPushData_TreatsAnUnsealedAlertAsAFault()
+	public void FromPushData_IgnoresAnUnencryptedPush()
 	{
 		var alert = HandAlert.FromPushData(
 			new Dictionary<string, string>(StringComparer.Ordinal)
@@ -386,42 +390,73 @@ public sealed class HandAlertTests
 				["body"] = "Wanted in BS5",
 			});
 
-		Assert.NotNull(alert);
-		Assert.Equal(9, alert.Id);
-		Assert.True(alert.IsUnreadable);
-		Assert.Equal(HandAlert.UnsealedMessage, alert.Title);
-		Assert.DoesNotContain("Joanne", alert.Title, StringComparison.Ordinal);
-		Assert.DoesNotContain("Joanne", alert.Body, StringComparison.Ordinal);
+		Assert.Null(alert);
 	}
 
-	/// <summary>A sealed alert that opens is not flagged as a fault.</summary>
+	/// <summary>
+	/// An empty <c>ciphertext</c> is the same as none at all — otherwise
+	/// a truncated or half-built message would be read as one.
+	/// </summary>
 	[Fact]
-	public void FromPushData_DoesNotFlagAnAlertThatOpened()
-	{
-		var key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-		var nonce = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
-		var plaintext = System.Text.Encoding.UTF8.GetBytes(
-			"""{"title":"Callback wanted","body":"BS5","reference":"CR-1"}""");
-		var ciphertext = new byte[plaintext.Length];
-		var tag = new byte[16];
+	public void FromPushData_IgnoresAnEmptyCiphertext() =>
+		Assert.Null(HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["ciphertext"] = string.Empty,
+				["alert_id"] = "9",
+			},
+			TestKeyBase64));
 
-		using (var gcm = new System.Security.Cryptography.AesGcm(key, 16))
-		{
-			gcm.Encrypt(nonce, plaintext, ciphertext, tag);
-		}
+	/// <summary>
+	/// A push sealed to a key this handset does not hold is a failure, not
+	/// a degraded alert.
+	///
+	/// <para>Nothing is shown: there is nothing to show, and the poll —
+	/// HTTPS straight to our own server, unaffected by a bad payload key —
+	/// still delivers the alert by the slower route. What must not happen
+	/// is the handset going quiet unnoticed, which is why the caller
+	/// reports the fault to Reach; see
+	/// <c>HandFirebaseMessagingService.Refuse</c>.</para>
+	/// </summary>
+	[Fact]
+	public void FromPushData_IgnoresAPushSealedToAnotherKey()
+	{
+		var alert = HandAlert.FromPushData(
+			new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["ciphertext"] = Seal(
+					Payload(9),
+					System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)),
+			},
+			TestKeyBase64);
+
+		Assert.Null(alert);
+	}
+
+	/// <summary>
+	/// GCM authenticates, so a payload altered on the way must fail rather
+	/// than decrypt to something plausible.
+	/// </summary>
+	[Fact]
+	public void FromPushData_IgnoresATamperedPush()
+	{
+		var bytes = Convert.FromBase64String(Seal(Payload(9)));
+		bytes[^1] ^= 0xFF;
 
 		var alert = HandAlert.FromPushData(
 			new Dictionary<string, string>(StringComparer.Ordinal)
 			{
-				["alert_id"] = "9",
-				["ciphertext"] = Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]),
+				["ciphertext"] = Convert.ToBase64String(bytes),
 			},
-			Convert.ToBase64String(key));
+			TestKeyBase64);
 
-		Assert.NotNull(alert);
-		Assert.False(alert.IsUnreadable);
-		Assert.Equal("Callback wanted", alert.Title);
+		Assert.Null(alert);
 	}
+
+	/// <summary>A handset with no key at all cannot open anything.</summary>
+	[Fact]
+	public void FromPushData_IgnoresASealedPushWhenThisHandsetHasNoKey() =>
+		Assert.Null(HandAlert.FromPushData(Push(Payload(9))));
 
 	/// <summary>
 	/// What a secure lock screen may show. The Android presenter hands these

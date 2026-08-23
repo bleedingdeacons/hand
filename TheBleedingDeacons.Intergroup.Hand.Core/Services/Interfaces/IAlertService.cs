@@ -42,6 +42,22 @@ public interface IAlertService
 	Task HandlePushAsync(HandAlert alert);
 
 	/// <summary>
+	/// Tell Reach this handset cannot read what it is sent.
+	///
+	/// <para>Called by the platform's messaging service when a push
+	/// arrived sealed and would not open. It cannot be triggered from an
+	/// alert any more, because an alert that will not open never becomes
+	/// one — <see cref="HandAlert.FromPushData"/> returns null and the
+	/// push is ignored. Without this the handset would simply go quiet,
+	/// which is the exact failure the report exists to make visible: it
+	/// is what puts the handset on Reach's devices screen.</para>
+	///
+	/// <para>At most once per run, and failures are swallowed. It is a
+	/// diagnostic, not a delivery.</para>
+	/// </summary>
+	Task ReportUnreadableAsync();
+
+	/// <summary>
 	/// Acknowledge an alert: tell Reach this handset has rung for it,
 	/// remove it from <see cref="Active"/>, and stop the alarm if nothing
 	/// else is outstanding.
