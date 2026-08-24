@@ -8,41 +8,45 @@
     Title="Settings">
 
     <!--
-        Type on this page is deliberately twice the size used elsewhere.
+        Type on this page tracks the rest of the app. It was deliberately
+        twice this size and is no longer: the doubling made a settings
+        screen that had to be scrolled three times to reach the buttons at
+        the bottom of it, which is a poor trade for type nobody reads from
+        across a room. The duty screen is where size earns its keep.
 
-        The sizes are set here rather than in Resources/Styles/Styles.xaml,
-        which is shared with every other page and with Register: raising the
-        implicit Label, Entry and Button styles there (all 14) would resize
-        the whole app. Entries and Buttons carry explicit sizes for the same
-        reason — they would otherwise inherit that 14 and leave the page
-        half-scaled, with doubled captions above ordinary-sized fields.
+        The sizes are still set here rather than in
+        Resources/Styles/Styles.xaml, which is shared with every other page
+        and with Register: changing the implicit Label, Entry and Button
+        styles there would resize the whole app. Entries and Buttons carry
+        explicit sizes for the same reason — they would otherwise inherit
+        that 14 and leave the page half-scaled.
     -->
 
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="16">
 
-            <Label Text="Signed in as" FontSize="26" Opacity="0.6" />
-            <Label Text="{Binding Responder}" FontSize="36" FontAttributes="Bold" />
+            <Label Text="Signed in as" FontSize="13" Opacity="0.6" />
+            <Label Text="{Binding Responder}" FontSize="18" FontAttributes="Bold" />
 
-            <Label Text="{Binding DeliveryMode}" FontSize="26" Opacity="0.7" />
+            <Label Text="{Binding DeliveryMode}" FontSize="13" Opacity="0.7" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
 
-            <Label Text="Reach server address" FontSize="26" Opacity="0.6" />
+            <Label Text="Reach server address" FontSize="13" Opacity="0.6" />
             <Entry
                 Placeholder="https://your-intergroup.example/"
                 Keyboard="Url"
-                FontSize="28"
+                FontSize="14"
                 Text="{Binding BaseUrl}" />
 
-            <Label Text="Check for alerts every (seconds)" FontSize="26" Opacity="0.6" />
+            <Label Text="Check for alerts every (seconds)" FontSize="13" Opacity="0.6" />
             <Entry
                 Keyboard="Numeric"
-                FontSize="28"
+                FontSize="14"
                 Text="{Binding PollSeconds}" />
             <Label
                 Text="How often this handset asks Reach for alerts. On Windows and macOS there is no push, so this is how alerts arrive."
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6" />
 
             <!--
@@ -54,22 +58,22 @@
                 <CheckBox IsChecked="{Binding Poll}" VerticalOptions="Center" />
                 <Label
                     Text="Check for alerts by polling"
-                    FontSize="26"
+                    FontSize="13"
                     VerticalOptions="Center" />
             </HorizontalStackLayout>
             <Label
                 Text="Leave this on. With it off, alerts arrive only when Reach pushes them &#8212; so if push stops working, this handset goes quiet and nothing says so."
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6" />
 
-            <Label Text="Device name" FontSize="26" Opacity="0.6" />
+            <Label Text="Device name" FontSize="13" Opacity="0.6" />
             <Entry
                 Placeholder="This handset"
-                FontSize="28"
+                FontSize="14"
                 Text="{Binding DeviceLabel}" />
             <Label
                 Text="Shown in Reach&#8217;s admin list so an administrator can tell handsets apart."
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
@@ -86,28 +90,27 @@
                     VerticalOptions="Center" />
                 <Label
                     Text="Ask for a fingerprint to open Hand"
-                    FontSize="26"
+                    FontSize="13"
                     VerticalOptions="Center" />
             </HorizontalStackLayout>
             <Label
                 Text="Only when the app is opened cold, and never while an alert is waiting &#8212; a ringing handset always opens straight to the acknowledge button."
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6" />
             <Label
                 Text="This handset cannot be asked for a fingerprint. Either none is set up on it, or this platform gives Hand no way to ask."
                 IsVisible="{Binding FingerprintUnavailable}"
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6"
                 TextColor="#663C00" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
 
-            <!-- Heights doubled with the type, or the text clips. -->
-            <Button Text="Save" HeightRequest="96" FontSize="28" Command="{Binding SaveCommand}" />
+            <Button Text="Save" HeightRequest="48" FontSize="14" Command="{Binding SaveCommand}" />
 
             <Label
                 Text="{Binding StatusMessage}"
-                FontSize="26"
+                FontSize="13"
                 Opacity="0.8" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
@@ -123,35 +126,35 @@
             <Button
                 Text="Close"
                 IsVisible="{Binding CanHide}"
-                HeightRequest="96"
-                FontSize="28"
+                HeightRequest="48"
+                FontSize="14"
                 Command="{Binding HideCommand}" />
 
             <Label
                 Text="Puts Hand out of the way without taking this handset off duty. It keeps checking for alerts and it will still ring."
                 IsVisible="{Binding CanHide}"
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
 
             <Button
                 Text="Sign out"
-                HeightRequest="96"
-                FontSize="28"
+                HeightRequest="48"
+                FontSize="14"
                 BackgroundColor="#B3261E"
                 TextColor="White"
                 Command="{Binding SignOutCommand}" />
 
             <Label
                 Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. Use Close to put Hand away and stay on duty."
-                FontSize="24"
+                FontSize="12"
                 Opacity="0.6"
                 TextColor="#663C00" />
 
             <Label
                 Text="{Binding Build}"
-                FontSize="22"
+                FontSize="11"
                 Opacity="0.5"
                 HorizontalOptions="Center"
                 Margin="0,16,0,0" />

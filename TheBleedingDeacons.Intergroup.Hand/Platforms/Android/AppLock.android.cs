@@ -29,6 +29,13 @@ namespace TheBleedingDeacons.Intergroup.Hand.Services;
 /// </summary>
 public sealed partial class AppLock
 {
+	/// <summary>
+	/// How long to wait before the second attempt at raising the prompt.
+	/// Long enough for an in-flight fragment transaction to finish, short
+	/// enough that a responder reads it as the prompt simply appearing.
+	/// </summary>
+	private static readonly TimeSpan RetryAfter = TimeSpan.FromMilliseconds(250);
+
 	private partial Task<bool> PlatformIsAvailableAsync()
 	{
 		try
@@ -77,6 +84,46 @@ public sealed partial class AppLock
 		var completion = new TaskCompletionSource<AppLockResult>(
 			TaskCreationOptions.RunContinuationsAsynchronously);
 
+		// Twice, and the second time is not superstition.
+		//
+		// BiometricPrompt adds a fragment of its own and then calls
+		// executePendingTransactions, which throws "FragmentManager is
+		// already executing transactions" if it is reached from inside one.
+		// Shell's navigation is a fragment transaction, so an attempt made
+		// as a page appears lands squarely in the middle of one — which is
+		// exactly what happened, every time, until LockPage started posting
+		// the first attempt instead of calling it.
+		//
+		// It is retried rather than reported because of which way the
+		// failure falls. An unraisable prompt is indistinguishable from an
+		// absent sensor from here, and an absent sensor opens the handset —
+		// so a transaction that happened to be in flight would turn the lock
+		// off for that launch and say nothing about it. One more turn of the
+		// loop costs a quarter of a second and removes the whole class.
+		if (!await TryShowAsync(activity, executor, reason, completion).ConfigureAwait(false))
+		{
+			await Task.Delay(RetryAfter).ConfigureAwait(false);
+
+			if (!await TryShowAsync(activity, executor, reason, completion).ConfigureAwait(false))
+			{
+				return AppLockResult.Unavailable;
+			}
+		}
+
+		return await completion.Task.ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Build the prompt and show it, reporting whether it went up rather
+	/// than throwing. See the note in
+	/// <see cref="PlatformAuthenticateAsync"/> for what it is catching.
+	/// </summary>
+	private static async Task<bool> TryShowAsync(
+		FragmentActivity activity,
+		Java.Util.Concurrent.IExecutor executor,
+		string reason,
+		TaskCompletionSource<AppLockResult> completion)
+	{
 		try
 		{
 			await MainThread.InvokeOnMainThreadAsync(() =>
@@ -97,14 +144,14 @@ public sealed partial class AppLock
 
 				prompt.Authenticate(info);
 			}).ConfigureAwait(false);
+
+			return true;
 		}
 		catch (Exception ex)
 		{
 			Log.Warning(ex, "The fingerprint prompt could not be shown");
-			return AppLockResult.Unavailable;
+			return false;
 		}
-
-		return await completion.Task.ConfigureAwait(false);
 	}
 
 	/// <summary>

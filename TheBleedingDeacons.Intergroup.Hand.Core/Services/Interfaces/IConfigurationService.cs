@@ -55,11 +55,18 @@ public interface IConfigurationService
 	/// <summary>
 	/// Whether this handset asks for a fingerprint when it is opened.
 	///
-	/// <para>Off unless a responder turns it on, and kept in preferences
-	/// rather than secure storage: it is a stated preference, not a
-	/// secret, and nothing is protected by hiding it. A handset whose
-	/// preferences can be read is one where the lock has already been got
-	/// round by other means.</para>
+	/// <para><b>On unless a responder turns it off.</b> A duty handset
+	/// holds other people's worst days and spends its life signed in and
+	/// unattended, so the protective setting is the one that should not
+	/// need finding — and the cost of defaulting it on is nil where it
+	/// cannot be honoured: a handset with nothing enrolled is asked
+	/// nothing and opens as it always did. See
+	/// <see cref="IAppLock.IsAvailableAsync"/>.</para>
+	///
+	/// <para>Kept in preferences rather than secure storage: it is a
+	/// stated preference, not a secret, and nothing is protected by hiding
+	/// it. A handset whose preferences can be read is one where the lock
+	/// has already been got round by other means.</para>
 	///
 	/// <para>Deliberately left on when the sensor stops working. See
 	/// <see cref="IAppLock"/>: the answer to a fingerprint that cannot be

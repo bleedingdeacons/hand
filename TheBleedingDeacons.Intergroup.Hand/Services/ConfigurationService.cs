@@ -301,13 +301,14 @@ public sealed class ConfigurationService : IConfigurationService
 	/// <summary>
 	/// Whether opening this handset asks for a fingerprint first.
 	///
-	/// <para>Preferences, not secure storage, and off by default. See
+	/// <para>Preferences, not secure storage, and <b>on</b> by default. See
 	/// <see cref="IConfigurationService.AppLockEnabled"/> for both
-	/// reasons.</para>
+	/// reasons, and for why defaulting it on is safe on a handset that has
+	/// no fingerprint to give.</para>
 	/// </summary>
 	public bool AppLockEnabled
 	{
-		get => Preferences.Get(AppLockKey, false);
+		get => Preferences.Get(AppLockKey, true);
 
 		set => Preferences.Set(AppLockKey, value);
 	}

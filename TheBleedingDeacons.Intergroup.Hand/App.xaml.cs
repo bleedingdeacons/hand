@@ -113,11 +113,13 @@ public partial class App : Application
 	/// Whether to ask for a fingerprint before showing the duty screen.
 	///
 	/// <para>Three ways to answer no, and every one of them opens the app:
-	/// the responder has not turned the lock on, something is already
-	/// outstanding, or this handset cannot ask. Only the second is
-	/// interesting — an alert waiting at launch means the responder is
-	/// opening the app <i>because</i> it rang, and a lock screen at that
-	/// moment is the app arguing with its own reason for existing.</para>
+	/// the responder has turned the lock off, something is already
+	/// outstanding, or this handset cannot ask. The last is what makes the
+	/// setting safe to default on — a handset with no fingerprint enrolled
+	/// is never asked for one. The second is the interesting one: an alert
+	/// waiting at launch means the responder is opening the app
+	/// <i>because</i> it rang, and a lock screen at that moment is the app
+	/// arguing with its own reason for existing.</para>
 	/// </summary>
 	private async Task<bool> ShouldLockAsync()
 	{
