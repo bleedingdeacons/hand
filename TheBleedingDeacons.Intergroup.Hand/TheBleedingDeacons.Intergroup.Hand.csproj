@@ -302,6 +302,15 @@
 		<PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.1" />
 
 		<!--
+			BiometricPrompt, for the optional fingerprint in front of an
+			already-enrolled handset - see AppLock. AndroidX rather than the
+			platform's own android.hardware.biometrics.BiometricPrompt, which
+			arrived in API 28 and would leave every handset between our floor
+			of 24 and that unable to offer the setting at all.
+		-->
+		<PackageReference Include="Xamarin.AndroidX.Biometric" Version="1.1.0.33" />
+
+		<!--
 			The Firebase project configuration, downloaded from the Firebase
 			console. The GoogleServicesJson build action is what matters: it is
 			what processes the file into the app so FirebaseMessaging can find

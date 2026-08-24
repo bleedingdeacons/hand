@@ -48,6 +48,7 @@ public sealed class ConfigurationService : IConfigurationService
 	/// </summary>
 	internal const string PayloadKeyKey = "hand_payload_key";
 	private const string DeviceLabelKey = "device_label";
+	private const string AppLockKey = "app_lock_enabled";
 	private const string ReachBaseUrlKey = "reach_base_url";
 
 	/// <summary>
@@ -295,6 +296,20 @@ public sealed class ConfigurationService : IConfigurationService
 		}
 
 		set => Preferences.Set(DeviceLabelKey, value ?? string.Empty);
+	}
+
+	/// <summary>
+	/// Whether opening this handset asks for a fingerprint first.
+	///
+	/// <para>Preferences, not secure storage, and off by default. See
+	/// <see cref="IConfigurationService.AppLockEnabled"/> for both
+	/// reasons.</para>
+	/// </summary>
+	public bool AppLockEnabled
+	{
+		get => Preferences.Get(AppLockKey, false);
+
+		set => Preferences.Set(AppLockKey, value);
 	}
 
 	/// <summary>

@@ -126,6 +126,17 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IReachClient, ReachClient>();
 		builder.Services.AddSingleton<IPushRegistrar, PushRegistrar>();
 		builder.Services.AddSingleton<ILockScreenPrivacy, LockScreenPrivacy>();
+
+		// The fingerprint gate. Stateless — it holds no unlocked flag,
+		// because the app is only ever asked once, on a cold start — so a
+		// singleton is simply the cheapest registration rather than a
+		// lifetime decision.
+		builder.Services.AddSingleton<IAppLock, AppLock>();
+
+		// Whether the app can put itself away, and doing it. Stateless,
+		// and a singleton for the same reason as the lock above.
+		builder.Services.AddSingleton<IWindowVisibility, WindowVisibility>();
+
 		builder.Services.AddSingleton<IDeviceAuthService, DeviceAuthService>();
 
 		// The alarm owns audio and vibration and must outlive any page: an
@@ -152,6 +163,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<SignInViewModel>();
 		builder.Services.AddTransient<SettingsPage>();
 		builder.Services.AddTransient<SettingsViewModel>();
+		builder.Services.AddTransient<LockPage>();
+		builder.Services.AddTransient<LockViewModel>();
 
 #if DEBUG
 		builder.Services.AddLogging();

@@ -60,6 +60,8 @@ internal sealed class FakeConfigurationService : IConfigurationService
 
 	public string DeviceLabel { get; set; } = "Test handset";
 
+	public bool AppLockEnabled { get; set; }
+
 	public ReachConfiguration GetReachConfiguration() => Reach;
 
 	public Task SaveReachConfigurationAsync(ReachConfiguration configuration)

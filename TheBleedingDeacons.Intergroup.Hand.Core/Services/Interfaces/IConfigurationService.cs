@@ -51,4 +51,20 @@ public interface IConfigurationService
 	/// administrator can tell one enrolled device from another.
 	/// </summary>
 	string DeviceLabel { get; set; }
+
+	/// <summary>
+	/// Whether this handset asks for a fingerprint when it is opened.
+	///
+	/// <para>Off unless a responder turns it on, and kept in preferences
+	/// rather than secure storage: it is a stated preference, not a
+	/// secret, and nothing is protected by hiding it. A handset whose
+	/// preferences can be read is one where the lock has already been got
+	/// round by other means.</para>
+	///
+	/// <para>Deliberately left on when the sensor stops working. See
+	/// <see cref="IAppLock"/>: the answer to a fingerprint that cannot be
+	/// asked for is to open the app, not to quietly forget a setting the
+	/// responder chose and would never be told had lapsed.</para>
+	/// </summary>
+	bool AppLockEnabled { get; set; }
 }

@@ -72,6 +72,36 @@
                 FontSize="24"
                 Opacity="0.6" />
 
+            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+
+            <!--
+                The fingerprint. Left on screen but disabled when the
+                handset has none enrolled, rather than hidden: a setting
+                that vanishes is one a responder decides they imagined.
+            -->
+            <HorizontalStackLayout Spacing="8">
+                <CheckBox
+                    IsChecked="{Binding RequireFingerprint}"
+                    IsEnabled="{Binding FingerprintAvailable}"
+                    VerticalOptions="Center" />
+                <Label
+                    Text="Ask for a fingerprint to open Hand"
+                    FontSize="26"
+                    VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Label
+                Text="Only when the app is opened cold, and never while an alert is waiting &#8212; a ringing handset always opens straight to the acknowledge button."
+                FontSize="24"
+                Opacity="0.6" />
+            <Label
+                Text="This handset cannot be asked for a fingerprint. Either none is set up on it, or this platform gives Hand no way to ask."
+                IsVisible="{Binding FingerprintUnavailable}"
+                FontSize="24"
+                Opacity="0.6"
+                TextColor="#663C00" />
+
+            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+
             <!-- Heights doubled with the type, or the text clips. -->
             <Button Text="Save" HeightRequest="96" FontSize="28" Command="{Binding SaveCommand}" />
 
@@ -82,6 +112,29 @@
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
 
+            <!--
+                Two ways to be rid of this screen, and they are nothing
+                alike. Close is first and plainly styled because it is the
+                one a responder almost always wants; sign out is last and
+                red because it ends the shift. Hidden entirely on the Apple
+                heads, which will not let an app put itself away &#8212; see
+                IWindowVisibility.
+            -->
+            <Button
+                Text="Close"
+                IsVisible="{Binding CanHide}"
+                HeightRequest="96"
+                FontSize="28"
+                Command="{Binding HideCommand}" />
+
+            <Label
+                Text="Puts Hand out of the way without taking this handset off duty. It keeps checking for alerts and it will still ring."
+                IsVisible="{Binding CanHide}"
+                FontSize="24"
+                Opacity="0.6" />
+
+            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+
             <Button
                 Text="Sign out"
                 HeightRequest="96"
@@ -89,6 +142,12 @@
                 BackgroundColor="#B3261E"
                 TextColor="White"
                 Command="{Binding SignOutCommand}" />
+
+            <Label
+                Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. Use Close to put Hand away and stay on duty."
+                FontSize="24"
+                Opacity="0.6"
+                TextColor="#663C00" />
 
             <Label
                 Text="{Binding Build}"
