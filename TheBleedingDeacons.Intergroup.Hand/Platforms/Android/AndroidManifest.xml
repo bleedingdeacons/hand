@@ -23,6 +23,18 @@
 	-->
 	<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
+	<!--
+		The optional fingerprint in front of the app - see AppLock. Not a
+		runtime permission and not prompted for: Android grants it at
+		install, and without it BiometricManager reports no hardware, so the
+		setting would simply never appear rather than fail visibly.
+
+		USE_FINGERPRINT, its API 23-27 predecessor, is declared by the
+		AndroidX Biometric library's own manifest and merged in at build
+		time; declaring it here as well would say nothing new.
+	-->
+	<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
 	<!-- The alarm needs to sound and shake with the screen off. -->
 	<uses-permission android:name="android.permission.VIBRATE" />
 	<uses-permission android:name="android.permission.WAKE_LOCK" />

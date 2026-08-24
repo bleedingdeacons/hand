@@ -8,14 +8,20 @@ public partial class App : Application
 	private readonly IDeviceAuthService _auth;
 	private readonly IAlertService _alerts;
 	private readonly IConfigurationService _configuration;
+	private readonly IAppLock _lock;
 
-	public App(IDeviceAuthService auth, IAlertService alerts, IConfigurationService configuration)
+	public App(
+		IDeviceAuthService auth,
+		IAlertService alerts,
+		IConfigurationService configuration,
+		IAppLock appLock)
 	{
 		InitializeComponent();
 
 		_auth = auth;
 		_alerts = alerts;
 		_configuration = configuration;
+		_lock = appLock;
 
 		// A handset that loses its authorisation must be told, not merely
 		// stopped. Subscribed here rather than on a page so it is caught
@@ -56,7 +62,7 @@ public partial class App : Application
 			if (restored)
 			{
 				await _alerts.StartAsync().ConfigureAwait(false);
-				await GoAsync("//alerts").ConfigureAwait(false);
+				await OpenDutyScreenAsync().ConfigureAwait(false);
 				return;
 			}
 
@@ -68,7 +74,7 @@ public partial class App : Application
 			if (!string.IsNullOrEmpty(token))
 			{
 				await _alerts.StartAsync().ConfigureAwait(false);
-				await GoAsync("//alerts").ConfigureAwait(false);
+				await OpenDutyScreenAsync().ConfigureAwait(false);
 				return;
 			}
 
@@ -78,6 +84,73 @@ public partial class App : Application
 		{
 			Log.Error(ex, "Startup failed; falling back to sign-in");
 			await GoAsync("//signin").ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
+	/// Open the duty screen, or put the lock screen in front of it.
+	/// </summary>
+	/// <remarks>
+	/// <para><b>Cold start is the only moment this is asked.</b> Resuming
+	/// does not lock, by design: a duty handset spends its life in the
+	/// background and comes forward because something happened, and a
+	/// fingerprint on every return would be paid dozens of times a shift
+	/// for a phone that has not left its owner's hand.</para>
+	///
+	/// <para>The alert loop is started before this runs, and deliberately
+	/// so — polling, push and the alarm all carry on behind the lock, and
+	/// <see cref="ViewModels.LockViewModel"/> steps aside the moment
+	/// anything lands.</para>
+	/// </remarks>
+	private async Task OpenDutyScreenAsync()
+	{
+		var route = await ShouldLockAsync().ConfigureAwait(false) ? "//lock" : "//alerts";
+
+		await GoAsync(route).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Whether to ask for a fingerprint before showing the duty screen.
+	///
+	/// <para>Three ways to answer no, and every one of them opens the app:
+	/// the responder has turned the lock off, something is already
+	/// outstanding, or this handset cannot ask. The last is what makes the
+	/// setting safe to default on — a handset with no fingerprint enrolled
+	/// is never asked for one. The second is the interesting one: an alert
+	/// waiting at launch means the responder is opening the app
+	/// <i>because</i> it rang, and a lock screen at that moment is the app
+	/// arguing with its own reason for existing.</para>
+	/// </summary>
+	private async Task<bool> ShouldLockAsync()
+	{
+		try
+		{
+			if (!_configuration.AppLockEnabled)
+			{
+				return false;
+			}
+
+			if (_alerts.Active.Count > 0)
+			{
+				Log.Information("Alerts are outstanding at launch; the fingerprint lock is skipped");
+				return false;
+			}
+
+			var available = await _lock.IsAvailableAsync().ConfigureAwait(false);
+
+			if (!available)
+			{
+				Log.Warning("The fingerprint lock is turned on but this handset cannot ask for one; opening unlocked");
+			}
+
+			return available;
+		}
+		catch (Exception ex)
+		{
+			// Nothing about a lock may keep a responder out of a duty
+			// handset. See IAppLock.
+			Log.Error(ex, "The fingerprint lock could not be evaluated; opening unlocked");
+			return false;
 		}
 	}
 

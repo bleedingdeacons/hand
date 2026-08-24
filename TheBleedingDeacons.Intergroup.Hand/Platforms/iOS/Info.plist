@@ -2,6 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!--
+		Required before LocalAuthentication may evaluate a biometric policy
+		on a Face ID device. An app that asks without it is terminated by
+		the system rather than refused, so this is not optional decoration -
+		see AppLock.apple.cs. The wording is shown in Apple's own prompt.
+	-->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Hand asks for your face or fingerprint before opening, so that alerts and callers' details on this handset stay yours.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIDeviceFamily</key>
