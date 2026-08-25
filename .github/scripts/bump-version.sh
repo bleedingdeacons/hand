@@ -7,7 +7,7 @@
 # are MAUI heads with the identical version shape, and a second dialect would
 # only mean two sets of habits. Keep them in step.
 #
-# Rules (see .github/workflows/version.yml):
+# Rules (see the `version` job in .github/workflows/ci.yml):
 #   any `feat:` commit  -> minor bump, patch reset to 0
 #   anything else       -> patch bump
 #   never major         -> a major release is a deliberate act, taken by hand

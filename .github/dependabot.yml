@@ -12,8 +12,8 @@
 # Monthly and grouped on purpose: one reviewer, and a weekly ungrouped
 # schedule is a great deal of noise for a volunteer-maintained app.
 #
-# Note: version.yml bumps the version on any push to main, so a merged
-# Dependabot PR cuts a version like any other change.
+# Note: merging a Dependabot PR cuts a version like any other change - the
+# version job in ci.yml bumps on a push to main, once every gate has passed.
 
 version: 2
 
