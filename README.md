@@ -1,6 +1,6 @@
 # Hand
 
-[![CI](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml) [![Coverage Status](https://coveralls.io/repos/github/bleedingdeacons/hand/badge.svg?branch=main)](https://coveralls.io/github/bleedingdeacons/hand?branch=main)
+[![CI](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/ci.yml) [![Semgrep](https://github.com/bleedingdeacons/hand/actions/workflows/semgrep.yml/badge.svg?branch=main)](https://github.com/bleedingdeacons/hand/actions/workflows/semgrep.yml) [![Coverage Status](https://coveralls.io/repos/github/bleedingdeacons/hand/badge.svg?branch=main)](https://coveralls.io/github/bleedingdeacons/hand?branch=main)
 
 A .NET MAUI app that alerts certified telephone responders when the
 helpline needs them. The server side is the

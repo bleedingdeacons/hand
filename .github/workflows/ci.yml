@@ -191,3 +191,39 @@ jobs:
           file: coverage/coverage.cobertura.xml
           format: cobertura
           fail-on-error: false
+
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+
+    # A job of its own, rather than a step inside the build as the PHP plugins
+    # do it. There the scan is a step because it has to fail before
+    # `composer install`; here the surrounding jobs install a JDK, the .NET SDK
+    # and (in hand) the MAUI Android workload, none of which Semgrep needs. A
+    # separate job runs in parallel and reports on its own terms.
+    #
+    # `semgrep ci` is diff-aware on a pull request, so it fails only on what
+    # that PR introduces. Which findings are fatal is decided by the Block
+    # remediation policy in Semgrep - currently Critical or High severity Code
+    # findings - not by anything in this file.
+    #
+    # Note this repo's version bump is NOT gated on CI (version.yml has no
+    # `needs:`), unlike the PHP plugins where `release: needs: ci`. So a red
+    # Semgrep here fails the PR, but does not by itself stop a version being
+    # cut once something is merged.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Semgrep
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          if [ -z "${SEMGREP_APP_TOKEN:-}" ]; then
+            echo 'SEMGREP_APP_TOKEN is not set - skipping the scan.'
+            echo 'Set it as an organisation secret to enable this gate.'
+            exit 0
+          fi
+          python3 -m pip install --quiet semgrep==1.174.0
+          semgrep ci
