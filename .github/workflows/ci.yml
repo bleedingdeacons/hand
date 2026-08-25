@@ -78,10 +78,14 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Cancel superseded runs on the same ref to save runner minutes.
+# Pull request runs share one group per ref, so pushing again cancels the
+# superseded run and saves runner minutes. Runs on main get a group of their
+# own (run_id is unique) and so cancel nothing: the version job below lives
+# in this workflow now, and a cancelled run would drop a version bump
+# entirely. Same shape the PHP plugin suite uses.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -207,10 +211,9 @@ jobs:
     # remediation policy in Semgrep - currently Critical or High severity Code
     # findings - not by anything in this file.
     #
-    # Note this repo's version bump is NOT gated on CI (version.yml has no
-    # `needs:`), unlike the PHP plugins where `release: needs: ci`. So a red
-    # Semgrep here fails the PR, but does not by itself stop a version being
-    # cut once something is merged.
+    # The version job below has this job in its `needs:`, so a red Semgrep on
+    # main stops a version being cut, the same way `release: needs: ci` works
+    # in the PHP plugin suite.
 
     steps:
       - name: Checkout
@@ -227,3 +230,78 @@ jobs:
           fi
           python3 -m pip install --quiet semgrep==1.174.0
           semgrep ci
+
+  version:
+    name: Bump version
+    # The whole point of this change: the bump now waits on every gate. Before,
+    # this lived in its own workflow triggered by `push` with no `needs:` at
+    # all, so a version was cut whether or not the build, the tests or Semgrep
+    # had passed. `needs:` makes a version something only green code gets.
+    needs: [build, test, semgrep]
+
+    # main only, and only for a real push - not for pull_request runs of this
+    # same workflow, and not for workflow_dispatch.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    # The workflow default is contents: read; pushing the version commit needs
+    # write, asked for here so nothing else in this file gets it.
+    permissions:
+      contents: write
+
+    # Serialise. Two merges landing close together must not race to compute the
+    # same next version. Deliberately not cancel-in-progress: a cancelled run
+    # would drop a bump entirely.
+    concurrency:
+      group: version-main
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # Full history: the bump is derived by walking the commits this push
+          # brought in.
+          fetch-depth: 0
+
+      - name: Compute and apply the bump
+        id: bump
+        # Invoked through bash rather than directly: this repo is authored on
+        # Windows, where git frequently does not record the executable bit, and
+        # a missing +x would fail the run for a reason nothing in the diff shows.
+        #
+        # github.event.before is the tip main had before this push. It is
+        # all-zeros on a branch's first push, and can point at a commit this
+        # clone does not have after a force-push, so fall back to HEAD~1.
+        run: |
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "No usable github.event.before; falling back to HEAD~1."
+            before="HEAD~1"
+          fi
+          bash .github/scripts/bump-version.sh "${before}..HEAD"
+
+      - name: Commit the new version
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # [skip ci] so this push does not re-run the build jobs against a
+          # commit whose only change is a version string. The script also
+          # refuses to bump when HEAD is already a version commit, so the loop
+          # is closed twice over — belt and braces, because a runaway here
+          # would bump on every iteration.
+          git commit -am "chore: version ${{ steps.bump.outputs.version }} [skip ci]"
+          git push
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.bump.outputs.changed }}" = "true" ]; then
+            echo "### Version ${{ steps.bump.outputs.version }} (${{ steps.bump.outputs.bump }} bump)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Android versionCode ${{ steps.bump.outputs.code }}." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Version unchanged" >> "$GITHUB_STEP_SUMMARY"
+            echo "Nothing to version in this push." >> "$GITHUB_STEP_SUMMARY"
+          fi
