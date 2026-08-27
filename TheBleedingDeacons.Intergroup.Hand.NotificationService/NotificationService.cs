@@ -1,4 +1,5 @@
 using Foundation;
+using ObjCRuntime;
 using TheBleedingDeacons.Intergroup.Hand.Models;
 using UserNotifications;
 
@@ -42,6 +43,35 @@ public sealed class NotificationService : UNNotificationServiceExtension
 {
 	private Action<UNNotificationContent>? _deliver;
 	private UNMutableNotificationContent? _content;
+
+	/// <summary>
+	/// The constructor iOS actually uses.
+	///
+	/// <para><b>Nothing in managed code calls this, and it still has to
+	/// exist.</b> The extension is instantiated by the Objective-C
+	/// runtime, from the class name in <c>Info.plist</c>'s
+	/// <c>NSExtensionPrincipalClass</c> — so what arrives is a native
+	/// handle to an object that already exists, and the job of this
+	/// constructor is to adopt it rather than to construct anything.
+	/// That is the shape every <see cref="Register"/>-ed
+	/// <see cref="NSObject"/> subclass takes.</para>
+	///
+	/// <para>Without it the compiler synthesises a parameterless
+	/// constructor whose implicit <c>base()</c> call has nothing to bind
+	/// to — <see cref="UNNotificationServiceExtension"/> exposes only
+	/// handle-taking constructors — and the class fails to compile with
+	/// <c>CS1729</c>. That went unnoticed because nothing compiles this
+	/// project: CI builds the Android head alone, and the extension is
+	/// unbuilt source until somebody opens it on a Mac.</para>
+	///
+	/// <para><c>public</c> rather than the customary <c>protected</c>
+	/// only because this class is sealed, where a protected member would
+	/// be a warning and mean nothing.</para>
+	/// </summary>
+	public NotificationService(NativeHandle handle)
+		: base(handle)
+	{
+	}
 
 	/// <summary>
 	/// Called by iOS with the arriving notification. Whatever is passed
