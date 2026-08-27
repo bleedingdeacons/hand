@@ -279,43 +279,54 @@ public partial class HandAlert : ObservableObject
 	}
 
 	/// <summary>
-	/// Who has already answered this alert, once a notice has said so.
-	/// Empty until then, and empty forever on a handset that never
-	/// receives one.
+	/// Whether this responder has taken this job on.
 	///
-	/// <para>Set from the notice rather than carried on the alert itself,
-	/// because the alert was sent before anybody had answered it. It is
-	/// what turns this card's button from Acknowledge into Close — see
-	/// <see cref="ActionLabel"/>.</para>
+	/// <para><b>The card stays on screen after it is acknowledged, and
+	/// this is what says so.</b> Pressing Acknowledge used to remove it
+	/// outright, which took the reference and the Show contact button
+	/// away at exactly the moment they became useful — the responder has
+	/// just accepted a call and now needs the details to make it. So
+	/// acknowledging silences the alarm, tells Reach, and leaves the card
+	/// where it is; the second press closes it.</para>
+	///
+	/// <para>Only ever set on the handset that pressed the button. The
+	/// other handsets do not mark this alert as answered, they lose it —
+	/// see <c>AlertService.RemoveMessageAsync</c>.</para>
 	/// </summary>
 	[JsonIgnore]
 	[ObservableProperty]
-	public partial string AcknowledgedBy { get; set; } = string.Empty;
+	public partial bool AcknowledgedHere { get; set; }
 
-	/// <summary>Whether somebody else has already dealt with this.</summary>
+	/// <summary>
+	/// Whether there is nothing outstanding about this card: this
+	/// handset has taken the job, or the card is news rather than a job.
+	///
+	/// <para>What the alarm counts. One alarm serves any number of
+	/// outstanding alerts and stops when the last is answered — and an
+	/// acknowledged card that stays on screen must not keep it
+	/// ringing.</para>
+	/// </summary>
 	[JsonIgnore]
-	public bool IsAnswered => AcknowledgedBy.Length > 0;
+	public bool IsSettled => AcknowledgedHere || IsAcknowledgementNotice;
 
-	/// <summary>The line the card shows when somebody else has answered.</summary>
+	/// <summary>The line an acknowledged card shows in place of nothing.</summary>
 	[JsonIgnore]
-	public string AnsweredLine => IsAnswered ? $"Acknowledged by {AcknowledgedBy}" : string.Empty;
+	public string AnsweredLine => AcknowledgedHere ? "Acknowledged by you" : string.Empty;
 
 	/// <summary>
 	/// What the card's button says.
 	///
-	/// <para>Acknowledge means "I have this". Neither a notice nor an
-	/// alert somebody else has already answered is a thing to take on, so
-	/// both offer Close instead — the button still tells Reach this
-	/// handset has dealt with the alert, which is what stops it coming
-	/// back on the next poll, but it no longer claims a job that is not
-	/// this responder's to claim.</para>
+	/// <para>Acknowledge means "I have this". A notice is not a job to
+	/// take on, and a card this responder has already taken cannot be
+	/// taken again — so both offer Close, which removes the card and
+	/// nothing else.</para>
 	/// </summary>
 	[JsonIgnore]
-	public string ActionLabel => IsAcknowledgementNotice || IsAnswered ? "Close" : "Acknowledge";
+	public string ActionLabel => IsSettled ? "Close" : "Acknowledge";
 
-	partial void OnAcknowledgedByChanged(string value)
+	partial void OnAcknowledgedHereChanged(bool value)
 	{
-		OnPropertyChanged(nameof(IsAnswered));
+		OnPropertyChanged(nameof(IsSettled));
 		OnPropertyChanged(nameof(AnsweredLine));
 		OnPropertyChanged(nameof(ActionLabel));
 	}

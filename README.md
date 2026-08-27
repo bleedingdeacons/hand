@@ -44,21 +44,34 @@ through a separate `reach_notices` channel, because a channel's
 importance and sound are fixed when it is created and a quiet
 notification posted to the alarm channel is not quiet at all.
 
-It **marks the alert it reports on.** That card gains an "Acknowledged
-by …" line, matched on the message uuid rather than the alert id: one
-message to a responder holding two handsets is two alerts with two ids,
-and the uuid is the only thing the copies share.
+It **takes the message off this handset.** Not marks it — removes it.
+An answered message is over: the responder who took it has the job, and
+leaving everybody else a card to dismiss one by one is work invented for
+no reason. Reach stops serving that message at the same moment, which is
+what keeps the next poll from handing it straight back. Matched on the
+message uuid rather than the alert id: one message to a responder
+holding two handsets is two alerts with two ids, and the uuid is the
+only thing the copies share.
 
-And it **turns Acknowledge into Close** — on the notice, and on any
-alert somebody else has already answered. Acknowledge means "I have
-this", and neither is a job left to take on. The button still tells
-Reach this handset has dealt with the alert, which is what stops it
-coming back on the next poll; it just no longer claims something that
-is not this responder's to claim.
+If that was the last outstanding alert, **the alarm stops** — a handset
+left ringing about a job somebody else has taken is the thing this
+exists to remove.
 
-The handset still rings until somebody touches it. Silencing one
-responder's alarm from another responder's phone is a larger decision
-than this feature makes.
+The notice itself stays, with a **Close** button. It is the whole of
+what this handset still needs to know.
+
+### Acknowledging keeps your own card
+
+The handset that answers is the exception: its card stays on screen,
+says "Acknowledged by you", and its button becomes Close.
+
+Acknowledging used to remove it, which took the reference and the Show
+contact button away at exactly the moment they started to matter — the
+responder has just accepted a call and now has to make it. So
+Acknowledge silences the alarm, drops the tray notification and tells
+Reach; the second press closes the card. **Acknowledge all** is the
+other thing and still clears the screen: nobody takes on five jobs by
+pressing one button.
 
 ## Known gaps
 
