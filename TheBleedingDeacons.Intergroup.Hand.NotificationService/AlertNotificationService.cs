@@ -38,8 +38,25 @@ namespace TheBleedingDeacons.Intergroup.Hand.NotificationService;
 /// they cannot read will phone in; one never woken will not. That is the
 /// same judgement the Android path and the server both make.</para>
 /// </summary>
+/// <remarks>
+/// <para><b>The C# name and the Objective-C name are deliberately
+/// different.</b> iOS instantiates this from
+/// <c>NSExtensionPrincipalClass</c> in <c>Info.plist</c>, which names the
+/// <i>exported</i> class — and that is pinned by the
+/// <see cref="RegisterAttribute"/> below, not by what the type is called
+/// here. So the native contract reads <c>NotificationService</c> whatever
+/// this class is renamed to, and the C# side is free to be named
+/// something that is not also the name of its own namespace. It was
+/// `NotificationService` in both places, which the Meziantou analyzer
+/// refuses (MA0049) and which is genuinely confusing to read.</para>
+///
+/// <para>Changing the string in the attribute, on the other hand, is a
+/// breaking change to the bundle: it must go on matching
+/// <c>Info.plist</c> exactly, or iOS launches the extension and finds
+/// nothing to instantiate.</para>
+/// </remarks>
 [Register("NotificationService")]
-public sealed class NotificationService : UNNotificationServiceExtension
+public sealed class AlertNotificationService : UNNotificationServiceExtension
 {
 	private Action<UNNotificationContent>? _deliver;
 	private UNMutableNotificationContent? _content;
@@ -68,7 +85,7 @@ public sealed class NotificationService : UNNotificationServiceExtension
 	/// only because this class is sealed, where a protected member would
 	/// be a warning and mean nothing.</para>
 	/// </summary>
-	public NotificationService(NativeHandle handle)
+	public AlertNotificationService(NativeHandle handle)
 		: base(handle)
 	{
 	}
