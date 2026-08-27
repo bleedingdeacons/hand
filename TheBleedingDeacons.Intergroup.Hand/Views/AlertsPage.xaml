@@ -117,15 +117,16 @@
                                     Opacity="0.85"
                                     IsVisible="{Binding Reference, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
 
-                                <!-- Somebody else has this. Set from the
-                                     notice Reach sends when a handset
-                                     acknowledges; see HandAlert.AnsweredLine. -->
+                                <!-- This responder has taken this on. The
+                                     card stays after Acknowledge so the
+                                     reference and the contact are still to
+                                     hand; see HandAlert.AcknowledgedHere. -->
                                 <Label
                                     Text="{Binding AnsweredLine}"
                                     TextColor="White"
                                     FontSize="15"
                                     FontAttributes="Italic"
-                                    IsVisible="{Binding IsAnswered}" />
+                                    IsVisible="{Binding AcknowledgedHere}" />
 
                                 <!-- Contact details are fetched only when
                                      asked for: Reach audits every read, and

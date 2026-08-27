@@ -220,18 +220,43 @@ public sealed class AlertServiceTests
 
 	// ── Acknowledgement ───────────────────────────────────────────────
 
+	/// <summary>
+	/// Acknowledging silences and tells Reach, and <b>keeps the card</b>.
+	///
+	/// <para>It used to remove it, which took the reference and the Show
+	/// contact button away at the moment the responder started needing
+	/// them — they have just accepted a call and now have to make it. The
+	/// alarm and the tray notification still go, because those are about
+	/// being summoned and the summoning is over.</para>
+	/// </summary>
 	[Fact]
-	public async Task AcknowledgingRemovesTheAlert_DismissesIt_AndTellsReach()
+	public async Task AcknowledgingKeepsTheCard_SilencesIt_AndTellsReach()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7));
 
 		await service.AcknowledgeAsync(service.Active[0]);
 
-		Assert.Empty(service.Active);
+		Assert.Single(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
+		Assert.Equal("Close", service.Active[0].ActionLabel);
 		Assert.Equal([7L], _presenter.Dismissed);
 		Assert.Equal([7L], _reach.Acknowledged);
 		Assert.Equal(1, _alarm.StopCount);
+	}
+
+	/// <summary>The second press is Close, and Close is local.</summary>
+	[Fact]
+	public async Task ClosingAnAcknowledgedCardRemovesItWithoutTellingReachAgain()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7));
+
+		await service.AcknowledgeAsync(service.Active[0]);
+		await service.AcknowledgeAsync(service.Active[0]);
+
+		Assert.Empty(service.Active);
+		Assert.Equal([7L], _reach.Acknowledged);
 	}
 
 	/// <summary>
@@ -250,6 +275,10 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAsync(service.Active.First(a => a.Id == 8));
 		Assert.Equal(1, _alarm.StopCount);
+
+		// Both cards are still on screen, and the alarm is off. The alarm
+		// counts what is outstanding, not what is listed.
+		Assert.Equal(2, service.Active.Count);
 	}
 
 	/// <summary>
@@ -266,7 +295,10 @@ public sealed class AlertServiceTests
 		_reach.PendingAlerts = ReachResult<IReadOnlyList<HandAlert>>.Ok([Alerts.New(7)]);
 		await service.RefreshAsync();
 
-		Assert.Empty(service.Active);
+		// The one card is the acknowledged one, still on screen; what must
+		// not happen is a second copy admitted beside it, alarming again.
+		Assert.Single(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
 		Assert.Single(_alarm.Started);
 	}
 
@@ -280,6 +312,8 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAllAsync();
 
+		// Acknowledge all is the other thing: nobody takes on three jobs by
+		// pressing one button, so it clears the screen as its name says.
 		Assert.Empty(service.Active);
 		Assert.Equal([7L, 8L, 9L], _reach.Acknowledged.Order());
 		Assert.Equal(1, _alarm.StopCount);
@@ -307,7 +341,7 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAsync(service.Active[0]);
 
-		Assert.Empty(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
 		Assert.Equal(1, _alarm.StopCount);
 	}
 

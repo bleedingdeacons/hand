@@ -73,20 +73,37 @@ public sealed class AcknowledgementNoticeTests
 		Assert.Equal(10L, _alarm.Started[0].Id);
 	}
 
-	// ── It lands on the right alert ───────────────────────────────────
+	// ── It clears the message from this handset ───────────────────────
 
 	[Fact]
-	public async Task ANoticeMarksTheAlertItReportsOnAsAnswered()
+	public async Task ANoticeRemovesTheAlertItReportsOn()
+	{
+		// An answered message is over. The responder who took it has the
+		// job; leaving everybody else a card to dismiss one by one is work
+		// invented for no reason.
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
+
+		await service.HandlePushAsync(Alerts.Notice(9, Message, by: "Jo B"));
+
+		Assert.DoesNotContain(service.Active, a => a.Id == 7);
+	}
+
+	/// <summary>
+	/// The notice stays. It is the whole of what this handset still needs
+	/// to know, and the only thing left on screen about that message.
+	/// </summary>
+	[Fact]
+	public async Task TheNoticeItselfRemains()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
 
 		await service.HandlePushAsync(Alerts.Notice(9, Message, by: "Jo B"));
 
-		var original = service.Active.Single(a => a.Id == 7);
-		Assert.True(original.IsAnswered);
-		Assert.Equal("Jo B", original.AcknowledgedBy);
-		Assert.Equal("Acknowledged by Jo B", original.AnsweredLine);
+		var notice = Assert.Single(service.Active);
+		Assert.Equal(9L, notice.Id);
+		Assert.Equal("Jo B acknowledged", notice.Title);
 	}
 
 	/// <summary>
@@ -95,7 +112,7 @@ public sealed class AcknowledgementNoticeTests
 	/// tablet is two rows, and the notice names neither of them.
 	/// </summary>
 	[Fact]
-	public async Task EveryCopyOfTheMessageIsMarked()
+	public async Task EveryCopyOfTheMessageGoes()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
@@ -103,9 +120,7 @@ public sealed class AcknowledgementNoticeTests
 
 		await service.HandlePushAsync(Alerts.Notice(9, Message));
 
-		Assert.All(
-			service.Active.Where(a => a.Id is 7 or 8),
-			alert => Assert.True(alert.IsAnswered));
+		Assert.DoesNotContain(service.Active, a => a.Id is 7 or 8);
 	}
 
 	[Fact]
@@ -117,12 +132,13 @@ public sealed class AcknowledgementNoticeTests
 
 		await service.HandlePushAsync(Alerts.Notice(9, Message));
 
-		Assert.False(service.Active.Single(a => a.Id == 8).IsAnswered);
+		Assert.Contains(service.Active, a => a.Id == 8);
 	}
 
 	/// <summary>
-	/// An alert raised before Reach had the column carries the empty
-	/// uuid. Every such alert would otherwise match every other one.
+	/// An alert raised before Reach had the column carries the empty uuid.
+	/// Every such alert would otherwise match every other one, and one
+	/// answered message would clear the lot.
 	/// </summary>
 	[Fact]
 	public async Task TheEmptyUuidMatchesNothing()
@@ -132,7 +148,7 @@ public sealed class AcknowledgementNoticeTests
 
 		await service.HandlePushAsync(Alerts.Notice(9, aboutMessageUuid: string.Empty));
 
-		Assert.False(service.Active.Single(a => a.Id == 7).IsAnswered);
+		Assert.Contains(service.Active, a => a.Id == 7);
 	}
 
 	/// <summary>
@@ -141,7 +157,7 @@ public sealed class AcknowledgementNoticeTests
 	/// emergency that has stopped mattering.
 	/// </summary>
 	[Fact]
-	public async Task AnExpiredNoticeStillMarksTheAlertAnswered()
+	public async Task AnExpiredNoticeStillClearsTheMessage()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
@@ -151,11 +167,28 @@ public sealed class AcknowledgementNoticeTests
 			Message,
 			expiresAt: DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 3600));
 
-		Assert.True(service.Active.Single(a => a.Id == 7).IsAnswered);
+		Assert.DoesNotContain(service.Active, a => a.Id == 7);
 
-		// …and is not itself shown. It has nothing left to say that the
-		// line above does not already say on the alert it reports on.
-		Assert.DoesNotContain(service.Active, a => a.Id == 9);
+		// …and is not itself shown. It has nothing left to say once the
+		// message it reports on is gone.
+		Assert.Empty(service.Active);
+	}
+
+	/// <summary>
+	/// Clearing the last outstanding alert stops the alarm, whoever it was
+	/// that answered. A handset left ringing about a job somebody else has
+	/// taken is the failure this whole feature exists to remove.
+	/// </summary>
+	[Fact]
+	public async Task ClearingTheLastAlertStopsTheAlarm()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
+		Assert.Equal(0, _alarm.StopCount);
+
+		await service.HandlePushAsync(Alerts.Notice(9, Message));
+
+		Assert.Equal(1, _alarm.StopCount);
 	}
 
 	/// <summary>
@@ -189,18 +222,24 @@ public sealed class AcknowledgementNoticeTests
 		Assert.Equal("Close", Alerts.Notice(9, Message).ActionLabel);
 	}
 
+	/// <summary>
+	/// The card this responder took on keeps its place and says so, and
+	/// its button becomes the one that clears it.
+	/// </summary>
 	[Fact]
-	public async Task AnAnsweredAlertOffersCloseInstead()
+	public async Task AnAcknowledgedCardSaysSoAndOffersClose()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
 
-		var original = service.Active.Single(a => a.Id == 7);
-		Assert.Equal("Acknowledge", original.ActionLabel);
+		var card = service.Active.Single(a => a.Id == 7);
+		Assert.Equal("Acknowledge", card.ActionLabel);
+		Assert.Equal(string.Empty, card.AnsweredLine);
 
-		await service.HandlePushAsync(Alerts.Notice(9, Message));
+		await service.AcknowledgeAsync(card);
 
-		Assert.Equal("Close", original.ActionLabel);
+		Assert.Equal("Close", card.ActionLabel);
+		Assert.Equal("Acknowledged by you", card.AnsweredLine);
 	}
 
 	/// <summary>
@@ -208,25 +247,25 @@ public sealed class AcknowledgementNoticeTests
 	/// the button keeps its old text until something else redraws it.
 	/// </summary>
 	[Fact]
-	public void MarkingAnAlertAnsweredRaisesTheBoundProperties()
+	public void SettlingAnAlertRaisesTheBoundProperties()
 	{
 		var alert = Alerts.New(7, messageUuid: Message);
 		var changed = new List<string?>();
 		alert.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
-		alert.AcknowledgedBy = "Jo B";
+		alert.AcknowledgedHere = true;
 
-		Assert.Contains(nameof(HandAlert.IsAnswered), changed);
+		Assert.Contains(nameof(HandAlert.IsSettled), changed);
 		Assert.Contains(nameof(HandAlert.AnsweredLine), changed);
 		Assert.Contains(nameof(HandAlert.ActionLabel), changed);
 	}
 
 	[Fact]
-	public void AnUnansweredAlertHasNoAnsweredLine()
+	public void AnUnacknowledgedAlertHasNoAnsweredLine()
 	{
 		var alert = Alerts.New(7);
 
-		Assert.False(alert.IsAnswered);
+		Assert.False(alert.IsSettled);
 		Assert.Equal(string.Empty, alert.AnsweredLine);
 	}
 
@@ -239,16 +278,11 @@ public sealed class AcknowledgementNoticeTests
 	/// by" and then nothing would look like a fault.
 	/// </summary>
 	[Fact]
-	public async Task ANoticeThatNamesNobodyStillNamesSomebody()
+	public void ANoticeThatNamesNobodyStillNamesSomebody()
 	{
-		using var service = Build();
-		await service.HandlePushAsync(Alerts.New(7, messageUuid: Message));
+		var notice = Alerts.Notice(9, Message, by: string.Empty);
 
-		await service.HandlePushAsync(Alerts.Notice(9, Message, by: string.Empty));
-
-		Assert.Equal(
-			HandAlert.UnknownResponder,
-			service.Active.Single(a => a.Id == 7).AcknowledgedBy);
+		Assert.Equal(HandAlert.UnknownResponder, notice.AcknowledgedByName);
 	}
 
 	/// <summary>
