@@ -21,11 +21,16 @@ namespace TheBleedingDeacons.Intergroup.Hand.Services;
 /// keyed by id, so a push and a poll carrying the same alert produce one
 /// entry and one alarm.</para>
 ///
-/// <para>One kind that arrives on this loop is not an alert at all. A
+/// <para>Two kinds that arrive on this loop are not alerts at all. A
 /// <see cref="HandAlert.KindDeviceRemoved"/> notice is Reach telling
 /// this handset it has been taken off the rota, and it is intercepted at
 /// the door and turned into a sign-out — see
-/// <see cref="HandleRemovalNoticeAsync"/>.</para>
+/// <see cref="HandleRemovalNoticeAsync"/>. A
+/// <see cref="HandAlert.KindMessageAcknowledged"/> notice says another
+/// responder has picked something up: it is admitted like anything else
+/// so it can be read, but it never reaches the alarm, and on the way in
+/// it marks the alert it reports on as answered — see
+/// <see cref="MarkAnsweredAsync"/>.</para>
 /// </summary>
 public sealed class AlertService : IAlertService, IDisposable
 {
@@ -329,6 +334,18 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
+		// A notice does two things, and this is the first: it marks the
+		// alert it reports on as already answered, wherever that alert is
+		// still sitting in this handset's list. Done before the expiry and
+		// duplicate checks below on purpose — a notice is a statement
+		// about the past that goes on being true, so a late or repeated
+		// one should still apply what it says even where it is not itself
+		// worth showing again.
+		if (alert.IsAcknowledgementNotice)
+		{
+			await MarkAnsweredAsync(alert).ConfigureAwait(false);
+		}
+
 		var now = DateTimeOffset.UtcNow;
 
 		// A push can be delivered late, and a handset back from a long time
@@ -379,7 +396,63 @@ public sealed class AlertService : IAlertService, IDisposable
 			Log.Error(ex, "Alert {AlertId} could not be presented", alert.Id);
 		}
 
+		// The second thing a notice does not do: alarm. Everything else
+		// admitted here is something a responder is being asked to act on;
+		// a notice is the app being told somebody already has, and there
+		// is no hour of the night at which that is worth a siren.
+		if (alert.IsQuiet)
+		{
+			return;
+		}
+
 		await _alarm.StartAsync(alert).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Apply a notice to the alert it reports on: name who answered, so
+	/// the card says so and its button becomes Close.
+	///
+	/// <para><b>Matched on the message uuid, never on an id.</b> The id a
+	/// notice could quote is the id of whichever copy the other responder
+	/// happened to answer, and a message sent to a responder holding two
+	/// handsets is two rows with two ids. The uuid is the only thing the
+	/// copies share — see <see cref="HandAlert.MessageUuid"/>.</para>
+	///
+	/// <para>Finding nothing is normal and not a fault: the alert may
+	/// have been acknowledged here already, or expired out of the list,
+	/// or this handset may never have had it. The notice is still shown
+	/// either way, because "Jo answered the 3am callback" is worth
+	/// reading whether or not the original is still on screen.</para>
+	/// </summary>
+	private async Task MarkAnsweredAsync(HandAlert notice)
+	{
+		var messageUuid = notice.AcknowledgesMessage;
+		if (messageUuid.Length == 0)
+		{
+			return;
+		}
+
+		var answeredBy = notice.AcknowledgedByName;
+
+		await _dispatcher.InvokeAsync(() =>
+		{
+			// Every copy, not the first match. A responder holding two
+			// handsets is the reason the uuid exists, and on either of
+			// them only one card is the one Reach happened to address —
+			// but both are the same message and both should say so.
+			var answered = Active.Where(
+				a => string.Equals(a.MessageUuid, messageUuid, StringComparison.Ordinal));
+
+			foreach (var alert in answered)
+			{
+				alert.AcknowledgedBy = answeredBy;
+			}
+		}).ConfigureAwait(false);
+
+		Log.Information(
+			"Message {MessageUuid} was acknowledged elsewhere by {Responder}",
+			messageUuid,
+			answeredBy);
 	}
 
 	private async Task RemoveAsync(long alertId)
