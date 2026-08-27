@@ -56,15 +56,26 @@ public sealed partial class PlatformAlertPresenter
 			{
 				Title = alert.Title,
 				Body = alert.Body,
-				Sound = UNNotificationSound.GetSound("reach_alert.wav"),
+
+				// The alarm tone for an alert; the system's own for a
+				// notice. A notice reports that somebody else has already
+				// answered, and nothing about that earns the sound this
+				// app uses to wake people at three in the morning.
+				Sound = alert.IsQuiet
+					? UNNotificationSound.Default
+					: UNNotificationSound.GetSound("reach_alert.wav"),
 			};
 
-			if (OperatingSystem.IsIOSVersionAtLeast(15))
+			// Time-sensitive is what breaks through a Focus mode. An alert
+			// needs that; a notice must not have it, or a responder who
+			// has deliberately silenced their phone is interrupted to be
+			// told they are not needed.
+			if (!alert.IsQuiet && OperatingSystem.IsIOSVersionAtLeast(15))
 			{
-				// Time-sensitive breaks through a Focus mode without needing
-				// any entitlement. Critical (which also beats the ringer
-				// switch) is set by Reach on the push payload when the site
-				// has Apple's entitlement — it is not ours to choose here.
+				// No entitlement needed for this one. Critical (which also
+				// beats the ringer switch) is set by Reach on the push
+				// payload when the site has Apple's entitlement — it is not
+				// ours to choose here.
 				//
 				// TimeSensitive2 is the renamed binding for the same
 				// underlying value; the original spelling is deprecated.

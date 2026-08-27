@@ -79,6 +79,24 @@
                                 <RoundRectangle CornerRadius="14" />
                             </Border.StrokeShape>
 
+                            <!--
+                                A notice is not an emergency, and a red
+                                field filling the screen says it is. It
+                                keeps the same shape and the same white
+                                text so it reads as part of the same list;
+                                only the alarm colour goes. A DataTrigger
+                                rather than a converter: one property,
+                                two values, nothing to unit-test.
+                            -->
+                            <Border.Triggers>
+                                <DataTrigger
+                                    Binding="{Binding IsAcknowledgementNotice}"
+                                    TargetType="Border"
+                                    Value="True">
+                                    <Setter Property="BackgroundColor" Value="#37474F" />
+                                </DataTrigger>
+                            </Border.Triggers>
+
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     Text="{Binding Title}"
@@ -98,6 +116,16 @@
                                     FontSize="13"
                                     Opacity="0.85"
                                     IsVisible="{Binding Reference, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <!-- Somebody else has this. Set from the
+                                     notice Reach sends when a handset
+                                     acknowledges; see HandAlert.AnsweredLine. -->
+                                <Label
+                                    Text="{Binding AnsweredLine}"
+                                    TextColor="White"
+                                    FontSize="15"
+                                    FontAttributes="Italic"
+                                    IsVisible="{Binding IsAnswered}" />
 
                                 <!-- Contact details are fetched only when
                                      asked for: Reach audits every read, and
@@ -128,8 +156,14 @@
                                     FontAttributes="Bold"
                                     IsVisible="{Binding IsContactShown}" />
 
+                                <!-- Acknowledge, or Close where there is
+                                     nothing to take on. See
+                                     HandAlert.ActionLabel: the command is
+                                     the same either way, because closing
+                                     still has to tell Reach this handset
+                                     has dealt with the alert. -->
                                 <Button
-                                    Text="Acknowledge"
+                                    Text="{Binding ActionLabel}"
                                     Margin="0,8,0,0"
                                     BackgroundColor="White"
                                     TextColor="#B3261E"

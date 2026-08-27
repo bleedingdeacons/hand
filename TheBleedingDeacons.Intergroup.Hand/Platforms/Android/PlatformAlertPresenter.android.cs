@@ -137,6 +137,11 @@ public sealed partial class PlatformAlertPresenter
 
 	private partial Task PlatformPresentAsync(HandAlert alert)
 	{
+		if (alert.IsQuiet)
+		{
+			return PresentQuietly(alert);
+		}
+
 		var context = AndroidApp.Context;
 		EnsureChannel(context);
 
@@ -221,6 +226,66 @@ public sealed partial class PlatformAlertPresenter
 		return Task.CompletedTask;
 	}
 
+	/// <summary>
+	/// Post something that is information rather than an emergency.
+	///
+	/// <para><b>A separate channel, because a channel's importance and
+	/// sound are fixed when it is created.</b> Android ignores every
+	/// later attempt to change them — deliberately, so an app cannot
+	/// override a user's choice — so a quiet notification posted to the
+	/// alarm channel is not quiet at all: it arrives at maximum
+	/// importance with the looping alarm tone, which is the entire thing
+	/// this is avoiding. There is no way to do it on one channel.</para>
+	///
+	/// <para>Auto-cancelled and not ongoing, unlike an alert: this is a
+	/// message to be read and swiped away, and there is nothing here that
+	/// has to stay in the tray until it is dealt with.</para>
+	///
+	/// <para>Still redacted on the lock screen. A notice quotes the
+	/// original message's own title so it says which message it is about,
+	/// which means it carries the same freehand text the alert did and
+	/// deserves the same treatment.</para>
+	/// </summary>
+	private static Task PresentQuietly(HandAlert alert)
+	{
+		var context = AndroidApp.Context;
+		EnsureNoticeChannel(context);
+
+		var intent = new Intent(context, typeof(MainActivity));
+		intent.SetFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+		intent.PutExtra("alert_id", alert.Id);
+
+		var contentIntent = PendingIntent.GetActivity(
+			context,
+			NotificationId(alert.Id),
+			intent,
+			PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+
+		var builder = new NotificationCompat.Builder(context, NoticeChannelId);
+		builder.SetContentTitle(alert.Title);
+		builder.SetContentText(alert.Body);
+		builder.SetStyle(new NotificationCompat.BigTextStyle().BigText(alert.Body));
+		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
+		builder.SetAutoCancel(true);
+		builder.SetOngoing(false);
+		builder.SetCategory(NotificationCompat.CategoryStatus);
+		builder.SetPriority(NotificationCompat.PriorityDefault);
+		builder.SetContentIntent(contentIntent);
+		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
+
+		try
+		{
+			NotificationManagerCompat.From(context)?.Notify(NotificationId(alert.Id), builder.Build());
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Notice for alert {AlertId} could not be posted", alert.Id);
+		}
+
+		return Task.CompletedTask;
+	}
+
 	private partial Task PlatformDismissAsync(long alertId)
 	{
 		try
@@ -282,6 +347,40 @@ public sealed partial class PlatformAlertPresenter
 		builder.SetContentIntent(contentIntent);
 
 		return builder.Build();
+	}
+
+	/// <summary>
+	/// Create the notices channel if it is not there.
+	///
+	/// <para>Default importance and the system's own notification sound:
+	/// it should appear and be readable, not demand anything. Vibration,
+	/// lights and the DND bypass are all deliberately absent — every one
+	/// of them exists on the alert channel to wake somebody, and nothing
+	/// on this channel is worth waking anybody for.</para>
+	/// </summary>
+	internal static void EnsureNoticeChannel(Context context)
+	{
+		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
+		{
+			return;
+		}
+
+		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
+		if (manager is null || manager.GetNotificationChannel(NoticeChannelId) is not null)
+		{
+			return;
+		}
+
+		var channel = new NotificationChannel(
+			NoticeChannelId,
+			"Helpline updates",
+			NotificationImportance.Default)
+		{
+			Description = "News about alerts somebody else has already answered. These will not wake you.",
+			LockscreenVisibility = NotificationVisibility.Private,
+		};
+
+		manager.CreateNotificationChannel(channel);
 	}
 
 	internal static void EnsureChannel(Context context)

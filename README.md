@@ -30,6 +30,36 @@ Reach before any push is attempted, and every handset polls as well as
 listening — so a phone in a tunnel catches up when it surfaces, and a
 handset whose FCM token has silently rotated still gets its alerts.
 
+### When somebody else answers first
+
+A broadcast rings every certified handset at once, and whoever answers
+silences only their own. So Reach sends a second message to everybody
+else it went to, saying who picked it up, and Hand does three things
+with it.
+
+It **never alarms.** Waking a second responder at three in the morning
+to tell them the first one answered would be worse than saying nothing,
+so the notice goes to the tray at ordinary priority — on Android
+through a separate `reach_notices` channel, because a channel's
+importance and sound are fixed when it is created and a quiet
+notification posted to the alarm channel is not quiet at all.
+
+It **marks the alert it reports on.** That card gains an "Acknowledged
+by …" line, matched on the message uuid rather than the alert id: one
+message to a responder holding two handsets is two alerts with two ids,
+and the uuid is the only thing the copies share.
+
+And it **turns Acknowledge into Close** — on the notice, and on any
+alert somebody else has already answered. Acknowledge means "I have
+this", and neither is a job left to take on. The button still tells
+Reach this handset has dealt with the alert, which is what stops it
+coming back on the next poll; it just no longer claims something that
+is not this responder's to claim.
+
+The handset still rings until somebody touches it. Silencing one
+responder's alarm from another responder's phone is a larger decision
+than this feature makes.
+
 ## Known gaps
 
 **iOS and Mac Catalyst do not receive push yet.** `PushRegistrar` on those

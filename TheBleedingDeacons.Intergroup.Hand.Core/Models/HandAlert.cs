@@ -47,6 +47,42 @@ public partial class HandAlert : ObservableObject
 	public const string KindDeviceRemoved = "device_removed";
 
 	/// <summary>
+	/// The kind that reports on another message rather than raising one:
+	/// Reach sends it when a handset acknowledges, to everybody else the
+	/// message went to, saying who picked it up.
+	///
+	/// <para><b>It must never alarm.</b> The whole of its content is that
+	/// somebody has already dealt with the thing that did alarm, and
+	/// waking a second responder to tell them the first one answered
+	/// would be worse than saying nothing. So it is admitted quietly —
+	/// see <see cref="IsQuiet"/> — and its card offers Close rather than
+	/// Acknowledge, because there is nothing here to acknowledge.</para>
+	///
+	/// <para>Matches <c>Alert::KIND_ACKNOWLEDGED</c> in Reach. Like
+	/// <see cref="KindDeviceRemoved"/> the two spellings are a wire
+	/// contract; changing one alone turns the notice back into a
+	/// siren.</para>
+	/// </summary>
+	public const string KindMessageAcknowledged = "message_acknowledged";
+
+	/// <summary>
+	/// Payload key naming the message a notice is about. Written by
+	/// <c>AcknowledgementNotifier::PAYLOAD_MESSAGE_UUID</c>.
+	/// </summary>
+	public const string PayloadAckMessageUuid = "ack_message_uuid";
+
+	/// <summary>
+	/// Payload key naming who acknowledged. A Unity anonymous name, never
+	/// an email address — see <c>AcknowledgementNotifier</c> on why the
+	/// usual fall back to the address is wrong for something that reaches
+	/// a lock screen.
+	/// </summary>
+	public const string PayloadAckResponder = "ack_responder";
+
+	/// <summary>What a notice says when it names nobody.</summary>
+	public const string UnknownResponder = "Another responder";
+
+	/// <summary>
 	/// Whether Reach holds contact details for this alert.
 	///
 	/// <para>A flag, never the details. Those are personal data and stay
@@ -80,6 +116,27 @@ public partial class HandAlert : ObservableObject
 
 	[JsonPropertyName("id")]
 	public long Id { get; set; }
+
+	/// <summary>
+	/// The send this alert is one delivery of.
+	///
+	/// <para>An id identifies a row; this identifies the thing somebody
+	/// sent. Usually the two are the same — a broadcast is one row
+	/// addressed to everybody — but an administrator messaging a
+	/// responder who holds a phone and a tablet raises two alerts on
+	/// purpose, so that each handset carries its own acknowledgement, and
+	/// only this says they are one message.</para>
+	///
+	/// <para>What Hand needs it for: matching an acknowledgement notice
+	/// to the alert it is about. The notice cannot quote an id, because
+	/// the id it would quote belongs to whichever copy the other
+	/// responder happened to answer. See <see cref="AcknowledgesMessage"/>.</para>
+	///
+	/// <para>Empty on an alert raised before Reach had the column.
+	/// Nothing matches on an empty uuid.</para>
+	/// </summary>
+	[JsonPropertyName("message_uuid")]
+	public string MessageUuid { get; set; } = string.Empty;
 
 	/// <summary>What kind of thing happened, e.g. <c>shift_uncovered</c>.</summary>
 	[JsonPropertyName("kind")]
@@ -177,6 +234,93 @@ public partial class HandAlert : ObservableObject
 		string.Equals(Kind, KindDeviceRemoved, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
+	/// Whether this reports somebody else's acknowledgement rather than
+	/// asking for one. See <see cref="KindMessageAcknowledged"/>.
+	/// </summary>
+	public bool IsAcknowledgementNotice =>
+		string.Equals(Kind, KindMessageAcknowledged, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether this may be shown without waking anybody: in the tray at
+	/// ordinary priority, no siren, no full-screen intent.
+	///
+	/// <para>Expressed as its own property rather than as a test on the
+	/// kind at each call site, because three platform presenters and the
+	/// alert loop all have to agree on it and only one of them has
+	/// tests.</para>
+	/// </summary>
+	public bool IsQuiet => IsAcknowledgementNotice;
+
+	/// <summary>
+	/// The message a notice is about, or empty when this is not one.
+	/// Matched against <see cref="MessageUuid"/>.
+	/// </summary>
+	public string AcknowledgesMessage =>
+		IsAcknowledgementNotice && Payload.TryGetValue(PayloadAckMessageUuid, out var uuid)
+			? uuid
+			: string.Empty;
+
+	/// <summary>
+	/// Who acknowledged, as a notice reports it. Falls back to the
+	/// generic name rather than to nothing: a notice that named nobody
+	/// would read as a fault.
+	/// </summary>
+	public string AcknowledgedByName
+	{
+		get
+		{
+			if (Payload.TryGetValue(PayloadAckResponder, out var name) && name.Length > 0)
+			{
+				return name;
+			}
+
+			return UnknownResponder;
+		}
+	}
+
+	/// <summary>
+	/// Who has already answered this alert, once a notice has said so.
+	/// Empty until then, and empty forever on a handset that never
+	/// receives one.
+	///
+	/// <para>Set from the notice rather than carried on the alert itself,
+	/// because the alert was sent before anybody had answered it. It is
+	/// what turns this card's button from Acknowledge into Close — see
+	/// <see cref="ActionLabel"/>.</para>
+	/// </summary>
+	[JsonIgnore]
+	[ObservableProperty]
+	public partial string AcknowledgedBy { get; set; } = string.Empty;
+
+	/// <summary>Whether somebody else has already dealt with this.</summary>
+	[JsonIgnore]
+	public bool IsAnswered => AcknowledgedBy.Length > 0;
+
+	/// <summary>The line the card shows when somebody else has answered.</summary>
+	[JsonIgnore]
+	public string AnsweredLine => IsAnswered ? $"Acknowledged by {AcknowledgedBy}" : string.Empty;
+
+	/// <summary>
+	/// What the card's button says.
+	///
+	/// <para>Acknowledge means "I have this". Neither a notice nor an
+	/// alert somebody else has already answered is a thing to take on, so
+	/// both offer Close instead — the button still tells Reach this
+	/// handset has dealt with the alert, which is what stops it coming
+	/// back on the next poll, but it no longer claims a job that is not
+	/// this responder's to claim.</para>
+	/// </summary>
+	[JsonIgnore]
+	public string ActionLabel => IsAcknowledgementNotice || IsAnswered ? "Close" : "Acknowledge";
+
+	partial void OnAcknowledgedByChanged(string value)
+	{
+		OnPropertyChanged(nameof(IsAnswered));
+		OnPropertyChanged(nameof(AnsweredLine));
+		OnPropertyChanged(nameof(ActionLabel));
+	}
+
+	/// <summary>
 	/// Whether the alert's window has closed. Checked before alarming as
 	/// well as when polling: a push can be delivered late, and a handset
 	/// that has been out of signal should not start shouting about
@@ -247,6 +391,7 @@ public partial class HandAlert : ObservableObject
 			Title = Value(opened, "title"),
 			Body = Value(opened, "body"),
 			Reference = Value(opened, "reference"),
+			MessageUuid = Value(opened, "message_uuid"),
 			CreatedAt = Number(opened, "created_at"),
 			ExpiresAt = Number(opened, "expires_at"),
 			HasContact = Value(opened, "has_contact") is "1" or "true",
@@ -268,8 +413,8 @@ public partial class HandAlert : ObservableObject
 
 	private static readonly HashSet<string> ReservedKeys = new(StringComparer.Ordinal)
 	{
-		"alert_id", "kind", "source", "priority", "title", "body",
-		"reference", "created_at", "expires_at", "channel", "sound",
+		"alert_id", "message_uuid", "kind", "source", "priority", "title",
+		"body", "reference", "created_at", "expires_at", "channel", "sound",
 		"has_contact",
 
 		// Not a field the server puts inside the blob — it is the blob's

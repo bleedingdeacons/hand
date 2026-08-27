@@ -76,6 +76,58 @@ public sealed class HandAlertTests
 			["has_contact"] = "1",
 		};
 
+	/// <summary>
+	/// The message uuid has to survive the push as well as the poll: it
+	/// is what an acknowledgement notice matches an alert on, and on
+	/// Android the whole data map makes the trip sealed, as strings.
+	/// </summary>
+	[Fact]
+	public void FromPushData_ReadsTheMessageUuid()
+	{
+		var payload = Payload();
+		payload["message_uuid"] = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
+
+		var alert = HandAlert.FromPushData(Push(payload), TestKeyBase64);
+
+		Assert.NotNull(alert);
+		Assert.Equal("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b", alert.MessageUuid);
+
+		// Reserved, so it does not also turn up as one of the raising
+		// plugin's own extras wherever those are shown.
+		Assert.DoesNotContain("message_uuid", alert.Payload.Keys);
+	}
+
+	/// <summary>
+	/// A notice arrives by push like anything else, and what it reports
+	/// travels as ordinary payload properties — which is what lets it
+	/// through a wire format that carries nothing but strings.
+	/// </summary>
+	[Fact]
+	public void FromPushData_RebuildsAnAcknowledgementNotice()
+	{
+		var payload = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["alert_id"] = "9",
+			["message_uuid"] = "notice-9",
+			["kind"] = HandAlert.KindMessageAcknowledged,
+			["title"] = "Jo B acknowledged",
+			[HandAlert.PayloadAckMessageUuid] = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+			[HandAlert.PayloadAckResponder] = "Jo B",
+		};
+
+		var alert = HandAlert.FromPushData(Push(payload), TestKeyBase64);
+
+		Assert.NotNull(alert);
+		Assert.True(alert.IsAcknowledgementNotice);
+
+		// Quiet is the property every presenter branches on, and it is
+		// the difference between a notification and a siren at 3am.
+		Assert.True(alert.IsQuiet);
+
+		Assert.Equal("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b", alert.AcknowledgesMessage);
+		Assert.Equal("Jo B", alert.AcknowledgedByName);
+	}
+
 	[Fact]
 	public void FromPushData_ReadsEveryField()
 	{

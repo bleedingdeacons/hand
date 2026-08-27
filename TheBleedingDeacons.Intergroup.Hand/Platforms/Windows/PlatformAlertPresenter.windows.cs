@@ -31,17 +31,27 @@ public sealed partial class PlatformAlertPresenter
 	{
 		try
 		{
-			var notification = new AppNotificationBuilder()
+			var builder = new AppNotificationBuilder()
 				.AddText(alert.Title)
 				.AddText(alert.Body)
-				.SetScenario(AppNotificationScenario.Alarm)
-				.SetTag(alert.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-				.SetAudioUri(
-					new Uri("ms-appx:///Resources/Raw/reach_alert.wav"),
-					AppNotificationAudioLooping.Loop)
-				.BuildNotification();
+				.SetTag(alert.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-			AppNotificationManager.Default.Show(notification);
+			// A notice is information: an ordinary toast that fades, with
+			// the system's own sound. Both of the settings below exist to
+			// make a duty alert impossible to miss, and neither is
+			// appropriate for news that somebody else has already dealt
+			// with it — an Alarm-scenario toast stays on screen until it
+			// is dismissed, and the looping audio does not stop by itself.
+			if (!alert.IsQuiet)
+			{
+				builder
+					.SetScenario(AppNotificationScenario.Alarm)
+					.SetAudioUri(
+						new Uri("ms-appx:///Resources/Raw/reach_alert.wav"),
+						AppNotificationAudioLooping.Loop);
+			}
+
+			AppNotificationManager.Default.Show(builder.BuildNotification());
 		}
 		catch (Exception ex)
 		{

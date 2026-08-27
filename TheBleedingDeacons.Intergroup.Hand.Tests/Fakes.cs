@@ -270,7 +270,11 @@ internal sealed class FakeReachClient : IReachClient
 /// <summary>Shorthand for building alerts in tests.</summary>
 internal static class Alerts
 {
-	public static HandAlert New(long id = 1, string kind = "shift_uncovered", long expiresAt = 0) =>
+	public static HandAlert New(
+		long id = 1,
+		string kind = "shift_uncovered",
+		long expiresAt = 0,
+		string messageUuid = "") =>
 		new()
 		{
 			Id = id,
@@ -282,5 +286,34 @@ internal static class Alerts
 			Reference = $"SHIFT-{id}",
 			CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
 			ExpiresAt = expiresAt,
+			MessageUuid = messageUuid,
 		};
+
+	/// <summary>
+	/// The notice Reach sends to everybody else when one handset
+	/// acknowledges: the same shape as any other alert, carrying the
+	/// message it reports on and who answered as payload properties.
+	/// </summary>
+	public static HandAlert Notice(
+		long id,
+		string aboutMessageUuid,
+		string by = "Jo B",
+		long expiresAt = 0)
+	{
+		var notice = New(id, HandAlert.KindMessageAcknowledged, expiresAt, $"notice-{id}");
+		notice.Title = $"{by} acknowledged";
+		notice.Body = "Shift uncovered";
+
+		if (aboutMessageUuid.Length > 0)
+		{
+			notice.Payload[HandAlert.PayloadAckMessageUuid] = aboutMessageUuid;
+		}
+
+		if (by.Length > 0)
+		{
+			notice.Payload[HandAlert.PayloadAckResponder] = by;
+		}
+
+		return notice;
+	}
 }

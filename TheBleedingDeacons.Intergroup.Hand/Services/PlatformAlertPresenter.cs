@@ -20,6 +20,19 @@ public sealed partial class PlatformAlertPresenter : IPlatformAlertPresenter
 	/// </summary>
 	public const string ChannelId = "reach_alerts";
 
+	/// <summary>
+	/// Notification channel id on Android for anything that is
+	/// information rather than an emergency — the notice saying another
+	/// responder has already answered.
+	///
+	/// <para>A second channel and not a quieter notification on the first
+	/// one, because an Android channel's importance and sound are fixed
+	/// when it is created and cannot be changed afterwards. Reach does
+	/// not name this channel: nothing it sends chooses it, and
+	/// <see cref="HandAlert.IsQuiet"/> is what routes to it.</para>
+	/// </summary>
+	public const string NoticeChannelId = "reach_notices";
+
 	public Task<bool> RequestPermissionsAsync() => PlatformRequestPermissionsAsync();
 
 	public Task PresentAsync(HandAlert alert)
