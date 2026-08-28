@@ -36,13 +36,19 @@ public sealed partial class PlatformAlertPresenter
 				.AddText(alert.Body)
 				.SetTag(alert.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-			// A notice is information: an ordinary toast that fades, with
-			// the system's own sound. Both of the settings below exist to
-			// make a duty alert impossible to miss, and neither is
-			// appropriate for news that somebody else has already dealt
-			// with it — an Alarm-scenario toast stays on screen until it
-			// is dismissed, and the looping audio does not stop by itself.
-			if (!alert.IsQuiet)
+			// Red alone gets the alarm treatment. Both settings below
+			// exist to make a duty alert impossible to miss — an
+			// Alarm-scenario toast stays on screen until it is dismissed
+			// and the looping audio does not stop by itself — and neither
+			// is appropriate for a level that is meant to be missable, or
+			// for news that somebody else has already dealt with it.
+			//
+			// Yellow and blue both fall through to an ordinary toast that
+			// fades, with the system's own sound. Windows has no third
+			// rung between "a toast" and "an alarm that will not stop", so
+			// the two quieter levels look the same here; they are still
+			// told apart by their card colour in the app.
+			if (alert.IsUrgent)
 			{
 				builder
 					.SetScenario(AppNotificationScenario.Alarm)

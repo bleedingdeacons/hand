@@ -202,13 +202,18 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
-		// A notice is news rather than a job, so its one button removes it
-		// outright. Everything else is silenced and settled but *kept*:
-		// the responder has just accepted a call and now needs the
+		// A message nobody has to take on is news rather than a job, so
+		// its one button removes it outright — there is nothing to keep
+		// the card for. Everything else is silenced and settled but
+		// *kept*: the responder has just accepted a call and now needs the
 		// reference and the Show contact button to make it. Removing the
 		// card at that moment was the old behaviour and it was exactly
 		// backwards.
-		if (alert.IsAcknowledgementNotice)
+		//
+		// Either way Reach is told below. Closing is how the server
+		// learns this handset has dealt with its own copy, which is what
+		// stops the next poll handing it straight back.
+		if (alert.IsInformational)
 		{
 			await RemoveAsync(alert.Id).ConfigureAwait(false);
 		}
@@ -437,8 +442,8 @@ public sealed class AlertService : IAlertService, IDisposable
 		}
 
 		Log.Information(
-			"Alert {AlertId} admitted: {Kind} {Reference} (urgent={Urgent})",
-			alert.Id, alert.Kind, alert.Reference, alert.IsUrgent);
+			"Alert {AlertId} admitted: {Kind} {Reference} ({Level}, {Response})",
+			alert.Id, alert.Kind, alert.Reference, alert.LevelOrDerived, alert.Response);
 
 		// The OS notification first: it is what a responder sees if the app
 		// is not on screen, and it must be up even if the audio fails.
@@ -451,11 +456,14 @@ public sealed class AlertService : IAlertService, IDisposable
 			Log.Error(ex, "Alert {AlertId} could not be presented", alert.Id);
 		}
 
-		// The second thing a notice does not do: alarm. Everything else
-		// admitted here is something a responder is being asked to act on;
-		// a notice is the app being told somebody already has, and there
-		// is no hour of the night at which that is worth a siren.
-		if (alert.IsQuiet)
+		// <b>Only red sounds the alarm.</b> The looping siren is the thing
+		// that makes a handset ring like a call until somebody answers,
+		// and it is exactly what separates the top level from the other
+		// two: yellow is a notification that makes a noise and can be
+		// missed, blue does not even do that. This used to fire for
+		// everything that was not a notice, because a notice was the only
+		// quiet thing there was.
+		if (!alert.IsUrgent)
 		{
 			return;
 		}
@@ -472,6 +480,22 @@ public sealed class AlertService : IAlertService, IDisposable
 
 		await _alarm.StartAsync(alert).ConfigureAwait(false);
 	}
+
+	/// <summary>
+	/// Whether one card is still a reason for the alarm to be sounding.
+	///
+	/// <para><b>Outstanding is not enough — it has to be red.</b> Only red
+	/// starts the alarm (see <c>AdmitAsync</c>), so only red may keep it
+	/// going. Counting every unsettled card would mean a yellow reminder
+	/// arriving mid-call left the siren running after the callback it was
+	/// actually ringing for had been answered, with nothing on screen
+	/// explaining why.</para>
+	///
+	/// <para>Written once and used by both stop paths, because an alarm
+	/// that two call sites disagree about when to stop is an alarm that
+	/// sometimes does not.</para>
+	/// </summary>
+	private static bool StillAlarming(HandAlert alert) => !alert.IsSettled && alert.IsUrgent;
 
 	/// <summary>
 	/// Mark an alert as taken by this responder: silence it, drop its
@@ -492,7 +516,7 @@ public sealed class AlertService : IAlertService, IDisposable
 
 			await _dispatcher.InvokeAsync(() => alert.AcknowledgedHere = true).ConfigureAwait(false);
 
-			nothingLeft = _alarmSounding && !Active.Any(a => !a.IsSettled);
+			nothingLeft = _alarmSounding && !Active.Any(StillAlarming);
 			_alarmSounding &= !nothingLeft;
 		}
 		finally
@@ -579,7 +603,7 @@ public sealed class AlertService : IAlertService, IDisposable
 			// it must not keep the alarm going. Gated on the alarm actually
 			// sounding so that clearing the last card in two steps does not
 			// stop it twice.
-			nothingLeft = _alarmSounding && !Active.Any(a => !a.IsSettled);
+			nothingLeft = _alarmSounding && !Active.Any(StillAlarming);
 			_alarmSounding &= !nothingLeft;
 		}
 		finally

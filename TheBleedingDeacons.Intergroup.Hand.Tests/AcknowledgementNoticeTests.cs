@@ -223,6 +223,62 @@ public sealed class AcknowledgementNoticeTests
 	}
 
 	/// <summary>
+	/// The general case the notice turned out to be one of. A message
+	/// nobody has to take on offers Close whatever its kind, and whatever
+	/// its level — a red fire drill everybody must see is still not a job.
+	/// </summary>
+	[Theory]
+	[InlineData(HandAlert.LevelRed)]
+	[InlineData(HandAlert.LevelYellow)]
+	[InlineData(HandAlert.LevelBlue)]
+	public void AnInformationalAlertOffersClose(string level)
+	{
+		var alert = Alerts.New(7, level: level, response: HandAlert.ResponseNone);
+
+		Assert.Equal("Close", alert.ActionLabel);
+		Assert.True(alert.IsSettled);
+	}
+
+	/// <summary>
+	/// And the mirror: a job is a job at any level, including a blue one
+	/// somebody still has to pick up.
+	/// </summary>
+	[Theory]
+	[InlineData(HandAlert.LevelRed)]
+	[InlineData(HandAlert.LevelYellow)]
+	[InlineData(HandAlert.LevelBlue)]
+	public void AFirstToRespondAlertOffersAcknowledge(string level)
+	{
+		var alert = Alerts.New(7, level: level, response: HandAlert.ResponseFirst);
+
+		Assert.Equal("Acknowledge", alert.ActionLabel);
+		Assert.False(alert.IsSettled);
+	}
+
+	/// <summary>
+	/// Closing an informational card removes it outright rather than
+	/// settling it in place. There is no reference to keep to hand and no
+	/// call to make — the card was never a job.
+	///
+	/// <para>It still tells Reach. That is how the server learns this
+	/// handset has dealt with its own copy, and what stops the next poll
+	/// handing it straight back.</para>
+	/// </summary>
+	[Fact]
+	public async Task ClosingAnInformationalAlertRemovesItAndStillTellsReach()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(
+			Alerts.New(7, response: HandAlert.ResponseNone, messageUuid: Message));
+
+		var card = service.Active.Single(a => a.Id == 7);
+		await service.AcknowledgeAsync(card);
+
+		Assert.Empty(service.Active);
+		Assert.Contains(7, _reach.Acknowledged);
+	}
+
+	/// <summary>
 	/// The card this responder took on keeps its place and says so, and
 	/// its button becomes the one that clears it.
 	/// </summary>

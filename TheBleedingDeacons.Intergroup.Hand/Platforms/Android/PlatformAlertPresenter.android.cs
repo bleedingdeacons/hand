@@ -137,9 +137,18 @@ public sealed partial class PlatformAlertPresenter
 
 	private partial Task PlatformPresentAsync(HandAlert alert)
 	{
+		// Three levels, three channels, three notifications. Only red
+		// falls through to the alarm treatment below — the other two are
+		// notifications a responder can miss, which is the difference the
+		// level exists to express.
 		if (alert.IsQuiet)
 		{
 			return PresentQuietly(alert);
+		}
+
+		if (alert.IsWarning)
+		{
+			return PresentWarning(alert);
 		}
 
 		var context = AndroidApp.Context;
@@ -248,8 +257,45 @@ public sealed partial class PlatformAlertPresenter
 	/// </summary>
 	private static Task PresentQuietly(HandAlert alert)
 	{
+		EnsureNoticeChannel(AndroidApp.Context);
+
+		return PresentWithoutTakingOver(alert, NoticeChannelId, NotificationCompat.CategoryStatus);
+	}
+
+	/// <summary>
+	/// Post the middle rung: it sounds and shows a heads-up banner, and
+	/// then behaves like a message.
+	///
+	/// <para>The same notification as a notice — auto-cancelled, not
+	/// ongoing, no full-screen intent — on a channel whose importance is
+	/// High rather than Default. That one difference is the whole of
+	/// yellow: it gets attention, and it does not demand the screen or
+	/// keep ringing. See <see cref="EnsureWarningChannel"/>.</para>
+	///
+	/// <para>The category is Message rather than Status because a yellow
+	/// alert is addressed to the responder, where a notice reports on
+	/// something. It is what Android uses to rank and group.</para>
+	/// </summary>
+	private static Task PresentWarning(HandAlert alert)
+	{
+		EnsureWarningChannel(AndroidApp.Context);
+
+		return PresentWithoutTakingOver(alert, WarningChannelId, NotificationCompat.CategoryMessage);
+	}
+
+	/// <summary>
+	/// The notification both non-alarm levels post, differing only in
+	/// their channel and category.
+	///
+	/// <para>Shared rather than written twice because the parts that must
+	/// not drift are the ones neither level varies: the redacted public
+	/// version, the content intent, and the absence of a full-screen
+	/// intent. A copy would be a second place for the lock-screen
+	/// treatment to be forgotten.</para>
+	/// </summary>
+	private static Task PresentWithoutTakingOver(HandAlert alert, string channelId, string category)
+	{
 		var context = AndroidApp.Context;
-		EnsureNoticeChannel(context);
 
 		var intent = new Intent(context, typeof(MainActivity));
 		intent.SetFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
@@ -261,15 +307,18 @@ public sealed partial class PlatformAlertPresenter
 			intent,
 			PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
 
-		var builder = new NotificationCompat.Builder(context, NoticeChannelId);
+		var builder = new NotificationCompat.Builder(context, channelId);
 		builder.SetContentTitle(alert.Title);
 		builder.SetContentText(alert.Body);
 		builder.SetStyle(new NotificationCompat.BigTextStyle().BigText(alert.Body));
 		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
 		builder.SetAutoCancel(true);
 		builder.SetOngoing(false);
-		builder.SetCategory(NotificationCompat.CategoryStatus);
-		builder.SetPriority(NotificationCompat.PriorityDefault);
+		builder.SetCategory(category);
+		builder.SetPriority(
+			category == NotificationCompat.CategoryMessage
+				? NotificationCompat.PriorityHigh
+				: NotificationCompat.PriorityDefault);
 		builder.SetContentIntent(contentIntent);
 		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
 		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
@@ -280,7 +329,7 @@ public sealed partial class PlatformAlertPresenter
 		}
 		catch (Exception ex)
 		{
-			Log.Warning(ex, "Notice for alert {AlertId} could not be posted", alert.Id);
+			Log.Warning(ex, "Notification for alert {AlertId} could not be posted", alert.Id);
 		}
 
 		return Task.CompletedTask;
@@ -379,6 +428,46 @@ public sealed partial class PlatformAlertPresenter
 			Description = "News about alerts somebody else has already answered. These will not wake you.",
 			LockscreenVisibility = NotificationVisibility.Private,
 		};
+
+		manager.CreateNotificationChannel(channel);
+	}
+
+	/// <summary>
+	/// The middle rung's channel: it makes a noise and shows a heads-up
+	/// banner, and stops there.
+	///
+	/// <para>High importance, so it appears over whatever is on screen
+	/// and sounds — that is what separates it from a notice. But the
+	/// alert channel's siren, its alarm audio usage and its Do Not
+	/// Disturb bypass are all absent: those exist to wake somebody who is
+	/// asleep, and yellow is explicitly the level that may be missed and
+	/// caught up with. The notification itself supplies the rest of the
+	/// difference — no full-screen intent, and it can be swiped
+	/// away.</para>
+	/// </summary>
+	internal static void EnsureWarningChannel(Context context)
+	{
+		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
+		{
+			return;
+		}
+
+		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
+		if (manager is null || manager.GetNotificationChannel(WarningChannelId) is not null)
+		{
+			return;
+		}
+
+		var channel = new NotificationChannel(
+			WarningChannelId,
+			"Helpline messages",
+			NotificationImportance.High)
+		{
+			Description = "Alerts that should get your attention but will not ring like a call.",
+			LockscreenVisibility = NotificationVisibility.Private,
+		};
+
+		channel.EnableVibration(true);
 
 		manager.CreateNotificationChannel(channel);
 	}

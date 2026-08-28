@@ -30,6 +30,46 @@ public partial class HandAlert : ObservableObject
 	public const string PriorityUrgent = "urgent";
 
 	/// <summary>
+	/// The loudest level: full-screen intent, alarm category, looping
+	/// siren, and a card the colour of a fire door. For what has to be
+	/// dealt with now.
+	///
+	/// <para>The spelling is a wire contract shared with
+	/// <c>Alert::LEVEL_RED</c> in Reach.</para>
+	/// </summary>
+	public const string LevelRed = "red";
+
+	/// <summary>
+	/// Audible but not commanding: a heads-up notification with a sound,
+	/// which a responder can miss and catch up with. The default, and the
+	/// right level for most things.
+	/// </summary>
+	public const string LevelYellow = "yellow";
+
+	/// <summary>
+	/// Information and reminders. The tray, at ordinary importance, and
+	/// never a siren — see <see cref="IsQuiet"/>.
+	/// </summary>
+	public const string LevelBlue = "blue";
+
+	/// <summary>
+	/// The first responder to acknowledge takes this on. Everybody else
+	/// is told who answered and loses the card; this handset's button
+	/// says Acknowledge.
+	///
+	/// <para>The spelling is a wire contract shared with
+	/// <c>Alert::RESPONSE_FIRST</c> in Reach.</para>
+	/// </summary>
+	public const string ResponseFirst = "first";
+
+	/// <summary>
+	/// Everybody reads it and closes their own copy. Nobody is taking
+	/// anything on, so the button says Close and closing it leaves the
+	/// message on every other handset.
+	/// </summary>
+	public const string ResponseNone = "none";
+
+	/// <summary>
 	/// The one kind that is an instruction rather than an alert: Reach
 	/// sends it as an administrator removes this handset from the rota.
 	///
@@ -146,8 +186,46 @@ public partial class HandAlert : ObservableObject
 	[JsonPropertyName("source")]
 	public string Source { get; set; } = string.Empty;
 
+	/// <summary>
+	/// The older, two-value spelling of <see cref="Level"/>, kept because
+	/// Reach still sends it and an older server sends nothing else.
+	///
+	/// <para>Nothing in the app branches on it any more — see
+	/// <see cref="IsUrgent"/>, which asks the level. It survives so that a
+	/// handset on this build talking to a Reach that predates the level
+	/// still knows a red alert when one arrives: see
+	/// <see cref="LevelOrDerived"/>.</para>
+	/// </summary>
 	[JsonPropertyName("priority")]
 	public string Priority { get; set; } = "normal";
+
+	/// <summary>
+	/// How loud this alert is, and what colour its card is.
+	///
+	/// <para>One of <see cref="LevelRed"/>, <see cref="LevelYellow"/> or
+	/// <see cref="LevelBlue"/>. The spellings are a wire contract shared
+	/// with <c>Alert::LEVEL_*</c> in Reach.</para>
+	///
+	/// <para><b>Empty is normal and is not a fault.</b> A Reach that
+	/// predates the level sends no such field, and this is the value that
+	/// says so. Read it through <see cref="LevelOrDerived"/>, never
+	/// directly, so that case falls back to the priority instead of
+	/// reading as an unrecognised level.</para>
+	/// </summary>
+	[JsonPropertyName("level")]
+	public string Level { get; set; } = string.Empty;
+
+	/// <summary>
+	/// Whether somebody has to take this on, or everybody just reads it.
+	///
+	/// <para><see cref="ResponseFirst"/> or <see cref="ResponseNone"/>;
+	/// the spellings are a wire contract shared with
+	/// <c>Alert::RESPONSE_*</c> in Reach. Defaults to first-to-respond,
+	/// because that is what every alert was before the field existed and
+	/// what an older Reach still means by sending nothing.</para>
+	/// </summary>
+	[JsonPropertyName("response")]
+	public string Response { get; set; } = ResponseFirst;
 
 	[JsonPropertyName("title")]
 	public string Title { get; set; } = string.Empty;
@@ -181,8 +259,97 @@ public partial class HandAlert : ObservableObject
 	[JsonConverter(typeof(AlertPayloadConverter))]
 	public Dictionary<string, string> Payload { get; set; } = new(StringComparer.Ordinal);
 
+	/// <summary>
+	/// The level this alert is at, falling back to the priority where the
+	/// server did not send one.
+	///
+	/// <para><b>Everything reads this and nothing reads <see cref="Level"/>
+	/// directly.</b> A Reach that predates the level sends only a
+	/// priority, and treating its absent level as "unrecognised, call it
+	/// yellow" would silently demote every urgent alert that server
+	/// raises to a heads-up — on the one route where the handset is
+	/// newer than the server, which is the ordinary way round for an app
+	/// that updates itself.</para>
+	/// </summary>
+	public string LevelOrDerived
+	{
+		get
+		{
+			if (string.Equals(Level, LevelRed, StringComparison.OrdinalIgnoreCase))
+			{
+				return LevelRed;
+			}
+
+			if (string.Equals(Level, LevelBlue, StringComparison.OrdinalIgnoreCase))
+			{
+				return LevelBlue;
+			}
+
+			if (string.Equals(Level, LevelYellow, StringComparison.OrdinalIgnoreCase))
+			{
+				return LevelYellow;
+			}
+
+			// No level, or one this build has never heard of. The priority
+			// is the only other thing that speaks to loudness, and an
+			// unrecognised level is safer read as the middle rung than as
+			// silence.
+			return IsUrgentPriority ? LevelRed : LevelYellow;
+		}
+	}
+
+	/// <summary>Whether this is the loudest level. See <see cref="LevelRed"/>.</summary>
 	public bool IsUrgent =>
+		string.Equals(LevelOrDerived, LevelRed, StringComparison.Ordinal);
+
+	/// <summary>Whether this is the middle rung. See <see cref="LevelYellow"/>.</summary>
+	public bool IsWarning =>
+		string.Equals(LevelOrDerived, LevelYellow, StringComparison.Ordinal);
+
+	/// <summary>
+	/// Whether the older two-value field says urgent. Only
+	/// <see cref="LevelOrDerived"/> should ask.
+	/// </summary>
+	private bool IsUrgentPriority =>
 		string.Equals(Priority, PriorityUrgent, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether everybody reads this and closes their own copy, rather
+	/// than one responder taking it on. See <see cref="ResponseNone"/>.
+	/// </summary>
+	public bool IsInformational =>
+		string.Equals(Response, ResponseNone, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// The card's background, as a hex colour.
+	///
+	/// <para><b>A string rather than a <c>Color</c>, and deliberately.</b>
+	/// This project has no MAUI workload — see the csproj — so a
+	/// <c>Microsoft.Maui.Graphics.Color</c> would not compile here, and
+	/// putting the palette in the app project instead would put it where
+	/// nothing can test it. XAML converts the string on binding.</para>
+	///
+	/// <para>The three colours are the level, and that is the whole point
+	/// of the level: a responder should be able to tell a callback from a
+	/// reminder across a room, before reading a word.</para>
+	/// </summary>
+	public string LevelBackground => LevelOrDerived switch
+	{
+		LevelRed => "#B3261E",
+		LevelBlue => "#1565C0",
+		_ => "#F9A825",
+	};
+
+	/// <summary>
+	/// What is legible on <see cref="LevelBackground"/>: white on the two
+	/// dark fields, near-black on yellow.
+	///
+	/// <para>A pair rather than a single background property because
+	/// white on <c>#F9A825</c> is not readable, and a card whose text
+	/// cannot be read at 3am is worse than one that is the wrong
+	/// colour.</para>
+	/// </summary>
+	public string LevelForeground => IsWarning ? "#241A00" : "#FFFFFF";
 
 	/// <summary>
 	/// What a secure lock screen is <i>offered</i> in place of the alert.
@@ -242,14 +409,21 @@ public partial class HandAlert : ObservableObject
 
 	/// <summary>
 	/// Whether this may be shown without waking anybody: in the tray at
-	/// ordinary priority, no siren, no full-screen intent.
+	/// ordinary importance, no siren, no full-screen intent.
 	///
-	/// <para>Expressed as its own property rather than as a test on the
-	/// kind at each call site, because three platform presenters and the
-	/// alert loop all have to agree on it and only one of them has
-	/// tests.</para>
+	/// <para>Expressed as its own property rather than as a test at each
+	/// call site, because three platform presenters and the alert loop
+	/// all have to agree on it and only one of them has tests.</para>
+	///
+	/// <para><b>It asks the level now, not the kind.</b> This used to mean
+	/// "is an acknowledgement notice", that being the only thing quiet
+	/// enough to want it. <see cref="LevelBlue"/> is the same property
+	/// made askable, and the notice is now simply one of the things that
+	/// asks — it is raised as blue by Reach rather than recognised as
+	/// special here.</para>
 	/// </summary>
-	public bool IsQuiet => IsAcknowledgementNotice;
+	public bool IsQuiet =>
+		string.Equals(LevelOrDerived, LevelBlue, StringComparison.Ordinal);
 
 	/// <summary>
 	/// The message a notice is about, or empty when this is not one.
@@ -299,15 +473,20 @@ public partial class HandAlert : ObservableObject
 
 	/// <summary>
 	/// Whether there is nothing outstanding about this card: this
-	/// handset has taken the job, or the card is news rather than a job.
+	/// handset has taken the job, or the card was never a job.
 	///
 	/// <para>What the alarm counts. One alarm serves any number of
 	/// outstanding alerts and stops when the last is answered — and an
 	/// acknowledged card that stays on screen must not keep it
 	/// ringing.</para>
+	///
+	/// <para><b>It asks the response requirement now, not the kind.</b>
+	/// Same move as <see cref="IsQuiet"/>: an acknowledgement notice was
+	/// the only thing nobody had to take on, and
+	/// <see cref="ResponseNone"/> is that made askable.</para>
 	/// </summary>
 	[JsonIgnore]
-	public bool IsSettled => AcknowledgedHere || IsAcknowledgementNotice;
+	public bool IsSettled => AcknowledgedHere || IsInformational;
 
 	/// <summary>The line an acknowledged card shows in place of nothing.</summary>
 	[JsonIgnore]
@@ -316,10 +495,15 @@ public partial class HandAlert : ObservableObject
 	/// <summary>
 	/// What the card's button says.
 	///
-	/// <para>Acknowledge means "I have this". A notice is not a job to
-	/// take on, and a card this responder has already taken cannot be
-	/// taken again — so both offer Close, which removes the card and
-	/// nothing else.</para>
+	/// <para>Acknowledge means "I have this". A message nobody has to
+	/// take on is not a job, and a card this responder has already taken
+	/// cannot be taken again — so both offer Close, which removes the
+	/// card and nothing else.</para>
+	///
+	/// <para>Unchanged when the response requirement arrived, which is
+	/// the sign the seam was in the right place: it reads
+	/// <see cref="IsSettled"/>, and that started following the
+	/// requirement instead of the kind.</para>
 	/// </summary>
 	[JsonIgnore]
 	public string ActionLabel => IsSettled ? "Close" : "Acknowledge";
@@ -399,6 +583,15 @@ public partial class HandAlert : ObservableObject
 			Kind = Value(opened, "kind"),
 			Source = Value(opened, "source"),
 			Priority = Value(opened, "priority"),
+			Level = Value(opened, "level"),
+			// Absent on a push from a Reach that predates the field, and
+			// first-to-respond is what every alert meant then. Read
+			// through the property default rather than as an empty string,
+			// which would make every pushed alert informational and turn
+			// every Acknowledge button into a Close.
+			Response = Value(opened, "response") is { Length: > 0 } response
+				? response
+				: ResponseFirst,
 			Title = Value(opened, "title"),
 			Body = Value(opened, "body"),
 			Reference = Value(opened, "reference"),
@@ -424,9 +617,9 @@ public partial class HandAlert : ObservableObject
 
 	private static readonly HashSet<string> ReservedKeys = new(StringComparer.Ordinal)
 	{
-		"alert_id", "message_uuid", "kind", "source", "priority", "title",
-		"body", "reference", "created_at", "expires_at", "channel", "sound",
-		"has_contact",
+		"alert_id", "message_uuid", "kind", "source", "priority", "level",
+		"response", "title", "body", "reference", "created_at", "expires_at",
+		"channel", "sound", "has_contact",
 
 		// Not a field the server puts inside the blob — it is the blob's
 		// own name, out on the push. Reserved anyway because the server
