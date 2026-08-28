@@ -70,49 +70,47 @@
             <CollectionView ItemsSource="{Binding Alerts}">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="models:HandAlert">
+                        <!--
+                            The card is the colour of its level, which is
+                            the whole point of the level: a responder
+                            should be able to tell a callback from a
+                            reminder across a room, before reading a word.
+
+                            The pair comes from HandAlert rather than from
+                            a DataTrigger here. Three levels would be two
+                            triggers on the background and two more on
+                            every label, and none of it testable — where
+                            the model's colours are covered by the same
+                            unit tests as everything else it derives. XAML
+                            converts the hex string to a Color on binding;
+                            it lives in Core as a string because Core has
+                            no MAUI workload to hold a Color at all.
+                        -->
                         <Border
                             Margin="12,6"
                             Padding="18"
-                            BackgroundColor="#B3261E"
+                            BackgroundColor="{Binding LevelBackground}"
                             StrokeThickness="0">
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="14" />
                             </Border.StrokeShape>
 
-                            <!--
-                                A notice is not an emergency, and a red
-                                field filling the screen says it is. It
-                                keeps the same shape and the same white
-                                text so it reads as part of the same list;
-                                only the alarm colour goes. A DataTrigger
-                                rather than a converter: one property,
-                                two values, nothing to unit-test.
-                            -->
-                            <Border.Triggers>
-                                <DataTrigger
-                                    Binding="{Binding IsAcknowledgementNotice}"
-                                    TargetType="Border"
-                                    Value="True">
-                                    <Setter Property="BackgroundColor" Value="#37474F" />
-                                </DataTrigger>
-                            </Border.Triggers>
-
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     Text="{Binding Title}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="24"
                                     FontAttributes="Bold" />
 
                                 <Label
                                     Text="{Binding Body}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="16"
                                     IsVisible="{Binding Body, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
 
                                 <Label
                                     Text="{Binding Reference}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="13"
                                     Opacity="0.85"
                                     IsVisible="{Binding Reference, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
@@ -123,7 +121,7 @@
                                      hand; see HandAlert.AcknowledgedHere. -->
                                 <Label
                                     Text="{Binding AnsweredLine}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="15"
                                     FontAttributes="Italic"
                                     IsVisible="{Binding AcknowledgedHere}" />
@@ -135,8 +133,8 @@
                                     Text="Show contact"
                                     Margin="0,4,0,0"
                                     BackgroundColor="Transparent"
-                                    TextColor="White"
-                                    BorderColor="White"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
                                     BorderWidth="1"
                                     HeightRequest="44"
                                     IsVisible="{Binding HasContact}"
@@ -147,12 +145,12 @@
                                 <ActivityIndicator
                                     IsRunning="{Binding IsLoadingContact}"
                                     IsVisible="{Binding IsLoadingContact}"
-                                    Color="White"
+                                    Color="{Binding LevelForeground}"
                                     HorizontalOptions="Start" />
 
                                 <Label
                                     Text="{Binding Contact}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="18"
                                     FontAttributes="Bold"
                                     IsVisible="{Binding IsContactShown}" />
@@ -166,8 +164,8 @@
                                 <Button
                                     Text="{Binding ActionLabel}"
                                     Margin="0,8,0,0"
-                                    BackgroundColor="White"
-                                    TextColor="#B3261E"
+                                    BackgroundColor="{Binding LevelForeground}"
+                                    TextColor="{Binding LevelBackground}"
                                     FontAttributes="Bold"
                                     HeightRequest="52"
                                     Command="{Binding ViewModel.AcknowledgeCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"

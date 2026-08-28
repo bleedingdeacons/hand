@@ -110,6 +110,11 @@ public sealed class HandAlertTests
 			["alert_id"] = "9",
 			["message_uuid"] = "notice-9",
 			["kind"] = HandAlert.KindMessageAcknowledged,
+			// As Reach raises it. The notice is quiet because it is blue
+			// and offers Close because nobody has to take it on — not
+			// because anything here recognises the kind.
+			["level"] = HandAlert.LevelBlue,
+			["response"] = HandAlert.ResponseNone,
 			["title"] = "Jo B acknowledged",
 			[HandAlert.PayloadAckMessageUuid] = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
 			[HandAlert.PayloadAckResponder] = "Jo B",
@@ -123,6 +128,10 @@ public sealed class HandAlertTests
 		// Quiet is the property every presenter branches on, and it is
 		// the difference between a notification and a siren at 3am.
 		Assert.True(alert.IsQuiet);
+
+		// And its button says Close, because there is nothing to take on.
+		Assert.True(alert.IsInformational);
+		Assert.Equal("Close", alert.ActionLabel);
 
 		Assert.Equal("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b", alert.AcknowledgesMessage);
 		Assert.Equal("Jo B", alert.AcknowledgedByName);
@@ -533,18 +542,105 @@ public sealed class HandAlertTests
 		Assert.DoesNotContain("CR-000123", HandAlert.LockScreenBody, StringComparison.Ordinal);
 	}
 
+	// ── level ─────────────────────────────────────────────────────────
+
+	/// <summary>
+	/// The card is the colour of its level. Asserted on the model rather
+	/// than through XAML because this is where the palette lives and the
+	/// only place anything can test it.
+	/// </summary>
+	[Theory]
+	[InlineData(HandAlert.LevelRed, "#B3261E", "#FFFFFF")]
+	[InlineData(HandAlert.LevelYellow, "#F9A825", "#241A00")]
+	[InlineData(HandAlert.LevelBlue, "#1565C0", "#FFFFFF")]
+	public void TheCardIsTheColourOfItsLevel(string level, string background, string foreground)
+	{
+		var alert = Alerts.New(level: level);
+
+		Assert.Equal(background, alert.LevelBackground);
+
+		// Yellow takes near-black text; white on it cannot be read, and a
+		// card that cannot be read at 3am is worse than a wrong colour.
+		Assert.Equal(foreground, alert.LevelForeground);
+	}
+
+	/// <summary>
+	/// Only red alarms, and only blue is quiet. Yellow is neither: it
+	/// makes a noise and can be missed, which is the whole reason there
+	/// are three levels rather than two.
+	/// </summary>
+	[Theory]
+	[InlineData(HandAlert.LevelRed, true, false)]
+	[InlineData(HandAlert.LevelYellow, false, false)]
+	[InlineData(HandAlert.LevelBlue, false, true)]
+	public void TheLevelDecidesHowLoudTheHandsetIs(string level, bool urgent, bool quiet)
+	{
+		var alert = Alerts.New(level: level);
+
+		Assert.Equal(urgent, alert.IsUrgent);
+		Assert.Equal(quiet, alert.IsQuiet);
+	}
+
+	/// <summary>
+	/// <b>A Reach that predates the level sends only a priority.</b>
+	/// Reading its absent level as "unrecognised, call it yellow" would
+	/// demote every urgent alert that server raises — on the one route
+	/// where the handset is newer than the server, which is the ordinary
+	/// way round for an app that updates itself.
+	/// </summary>
+	[Theory]
+	[InlineData("urgent", HandAlert.LevelRed)]
+	[InlineData("URGENT", HandAlert.LevelRed)]
+	[InlineData("normal", HandAlert.LevelYellow)]
+	[InlineData("", HandAlert.LevelYellow)]
+	public void AnAlertWithNoLevelFallsBackToItsPriority(string priority, string expected)
+	{
+		var alert = Alerts.New();
+		alert.Level = string.Empty;
+		alert.Priority = priority;
+
+		Assert.Equal(expected, alert.LevelOrDerived);
+	}
+
+	[Fact]
+	public void AnUnrecognisedLevelIsReadAsTheMiddleRung()
+	{
+		// Never as silence: a level this build has not heard of might be
+		// louder than anything it knows, and guessing quiet would be the
+		// one mistake that loses an alert.
+		var alert = Alerts.New();
+		alert.Level = "puce";
+		alert.Priority = "normal";
+
+		Assert.Equal(HandAlert.LevelYellow, alert.LevelOrDerived);
+		Assert.False(alert.IsQuiet);
+	}
+
+	[Fact]
+	public void AnAlertWithNoResponseIsSomebodysToTakeOn()
+	{
+		// What an older Reach means by sending nothing, and what every
+		// alert meant before the field existed. Read the other way round,
+		// every Acknowledge button would silently become a Close.
+		var alert = Alerts.New();
+		alert.Response = string.Empty;
+
+		Assert.False(alert.IsInformational);
+		Assert.Equal("Acknowledge", alert.ActionLabel);
+	}
+
 	/// <summary>
 	/// Urgency survives redaction deliberately: it is not a secret, and it
 	/// is what tells a responder whether the phone can wait.
 	/// </summary>
 	[Theory]
-	[InlineData("normal", "Helpline alert")]
-	[InlineData("urgent", "Urgent helpline alert")]
-	[InlineData("URGENT", "Urgent helpline alert")]
-	public void LockScreenTitle_KeepsUrgencyAndNothingElse(string priority, string expected)
+	[InlineData(HandAlert.LevelYellow, "Helpline alert")]
+	[InlineData(HandAlert.LevelBlue, "Helpline alert")]
+	[InlineData(HandAlert.LevelRed, "Urgent helpline alert")]
+	[InlineData("RED", "Urgent helpline alert")]
+	public void LockScreenTitle_KeepsUrgencyAndNothingElse(string level, string expected)
 	{
-		var alert = Alerts.New();
-		alert.Priority = priority;
+		var alert = Alerts.New(level: level);
 
 		Assert.Equal(expected, alert.LockScreenTitle);
 	}

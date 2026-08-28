@@ -57,29 +57,43 @@ public sealed partial class PlatformAlertPresenter
 				Title = alert.Title,
 				Body = alert.Body,
 
-				// The alarm tone for an alert; the system's own for a
-				// notice. A notice reports that somebody else has already
-				// answered, and nothing about that earns the sound this
-				// app uses to wake people at three in the morning.
-				Sound = alert.IsQuiet
-					? UNNotificationSound.Default
-					: UNNotificationSound.GetSound("reach_alert.wav"),
+				// The alarm tone for red alone. Yellow and blue take the
+				// system's own: the siren is what this app uses to wake
+				// people at three in the morning, and a level that may be
+				// missed has by definition not earned it.
+				Sound = alert.IsUrgent
+					? UNNotificationSound.GetSound("reach_alert.wav")
+					: UNNotificationSound.Default,
 			};
 
-			// Time-sensitive is what breaks through a Focus mode. An alert
-			// needs that; a notice must not have it, or a responder who
-			// has deliberately silenced their phone is interrupted to be
-			// told they are not needed.
-			if (!alert.IsQuiet && OperatingSystem.IsIOSVersionAtLeast(15))
+			// <b>iOS has no full-screen intent, so the interruption level
+			// is the whole of the ladder here.</b> Three levels, three
+			// answers:
+			//
+			//   red    — time-sensitive: breaks through a Focus mode,
+			//            which is the point of the level.
+			//   yellow — left alone, so it behaves as an ordinary
+			//            notification: it arrives, it sounds, and a
+			//            responder who has silenced their phone stays
+			//            silenced. That is what "can be missed" means.
+			//   blue   — passive: it does not even light the screen, and
+			//            is found in the tray when the phone is picked up.
+			//
+			// Critical, which also beats the ringer switch, is set by
+			// Reach on the push payload where the site has Apple's
+			// entitlement. It is not ours to choose here.
+			if (OperatingSystem.IsIOSVersionAtLeast(15))
 			{
-				// No entitlement needed for this one. Critical (which also
-				// beats the ringer switch) is set by Reach on the push
-				// payload when the site has Apple's entitlement — it is not
-				// ours to choose here.
-				//
 				// TimeSensitive2 is the renamed binding for the same
 				// underlying value; the original spelling is deprecated.
-				content.InterruptionLevel = UNNotificationInterruptionLevel.TimeSensitive2;
+				if (alert.IsUrgent)
+				{
+					content.InterruptionLevel = UNNotificationInterruptionLevel.TimeSensitive2;
+				}
+				else if (alert.IsQuiet)
+				{
+					content.InterruptionLevel = UNNotificationInterruptionLevel.Passive;
+				}
 			}
 
 			var request = UNNotificationRequest.FromIdentifier(

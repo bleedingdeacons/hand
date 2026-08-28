@@ -25,13 +25,27 @@ public sealed partial class PlatformAlertPresenter : IPlatformAlertPresenter
 	/// information rather than an emergency — the notice saying another
 	/// responder has already answered.
 	///
-	/// <para>A second channel and not a quieter notification on the first
-	/// one, because an Android channel's importance and sound are fixed
-	/// when it is created and cannot be changed afterwards. Reach does
-	/// not name this channel: nothing it sends chooses it, and
-	/// <see cref="HandAlert.IsQuiet"/> is what routes to it.</para>
+	/// <para>A separate channel and not a quieter notification on the
+	/// alert one, because an Android channel's importance and sound are
+	/// fixed when it is created and cannot be changed afterwards. That is
+	/// also why there are three of these rather than one reconfigured
+	/// three ways, and why a level added later has to be a new id.</para>
+	///
+	/// <para>Reach sends a matching channel id alongside the level, but
+	/// the app does not take instruction from it: it derives the channel
+	/// from <see cref="HandAlert.LevelOrDerived"/>, which is the only
+	/// thing that still works when talking to a Reach that predates the
+	/// level.</para>
 	/// </summary>
 	public const string NoticeChannelId = "reach_notices";
+
+	/// <summary>
+	/// Notification channel id on Android for the middle rung: audible
+	/// and heads-up, but it does not take the screen over. See
+	/// <see cref="NoticeChannelId"/> on why the levels are separate
+	/// channels.
+	/// </summary>
+	public const string WarningChannelId = "reach_warnings";
 
 	public Task<bool> RequestPermissionsAsync() => PlatformRequestPermissionsAsync();
 

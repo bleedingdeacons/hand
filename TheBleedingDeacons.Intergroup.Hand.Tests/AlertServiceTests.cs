@@ -260,6 +260,51 @@ public sealed class AlertServiceTests
 	}
 
 	/// <summary>
+	/// <b>Only red sounds the alarm.</b> The looping siren is what makes a
+	/// handset ring like a call until somebody answers, and it is exactly
+	/// what separates the top level from the other two.
+	/// </summary>
+	[Fact]
+	public async Task AYellowAlertIsPresentedButNeverRings()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7, level: HandAlert.LevelYellow));
+
+		// It arrived, it is on the list, and the handset showed it.
+		Assert.Single(service.Active);
+		Assert.Single(_presenter.Presented);
+
+		// And it did not wake anybody.
+		Assert.Empty(_alarm.Started);
+		Assert.False(_alarm.IsSounding);
+	}
+
+	/// <summary>
+	/// The mirror, and the bug it prevents: a yellow reminder arriving
+	/// mid-call must not keep the siren running after the callback it was
+	/// actually ringing for has been answered — with nothing on screen
+	/// explaining why. Only red keeps the alarm going, because only red
+	/// starts it.
+	/// </summary>
+	[Fact]
+	public async Task AnOutstandingYellowAlertDoesNotKeepTheAlarmGoing()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7));
+		await service.HandlePushAsync(Alerts.New(8, level: HandAlert.LevelYellow));
+
+		Assert.Single(_alarm.Started);
+
+		await service.AcknowledgeAsync(service.Active.First(a => a.Id == 7));
+
+		Assert.Equal(1, _alarm.StopCount);
+
+		// The yellow card is still there and still unanswered. It is
+		// simply not a reason for a siren.
+		Assert.Contains(service.Active, a => a.Id == 8 && !a.IsSettled);
+	}
+
+	/// <summary>
 	/// One alarm serves any number of outstanding alerts, so it only stops
 	/// when the last of them is answered.
 	/// </summary>

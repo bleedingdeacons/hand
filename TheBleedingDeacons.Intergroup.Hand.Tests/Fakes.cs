@@ -270,17 +270,31 @@ internal sealed class FakeReachClient : IReachClient
 /// <summary>Shorthand for building alerts in tests.</summary>
 internal static class Alerts
 {
+	/// <summary>
+	/// An alert of the kind a responder has to deal with.
+	///
+	/// <para><b>Red by default, and that is not a shortcut.</b> Most of
+	/// this suite is about a handset ringing, being silenced and being
+	/// answered, and only red does any of that — yellow is a notification
+	/// that can be missed. A fixture that defaulted to yellow would leave
+	/// every one of those tests asserting against an alert that was never
+	/// going to alarm.</para>
+	/// </summary>
 	public static HandAlert New(
 		long id = 1,
 		string kind = "shift_uncovered",
 		long expiresAt = 0,
-		string messageUuid = "") =>
+		string messageUuid = "",
+		string level = HandAlert.LevelRed,
+		string response = HandAlert.ResponseFirst) =>
 		new()
 		{
 			Id = id,
 			Kind = kind,
 			Source = "trusted",
-			Priority = "normal",
+			Priority = level == HandAlert.LevelRed ? "urgent" : "normal",
+			Level = level,
+			Response = response,
 			Title = "Shift uncovered",
 			Body = "Nobody is on the helpline.",
 			Reference = $"SHIFT-{id}",
@@ -293,6 +307,12 @@ internal static class Alerts
 	/// The notice Reach sends to everybody else when one handset
 	/// acknowledges: the same shape as any other alert, carrying the
 	/// message it reports on and who answered as payload properties.
+	///
+	/// <para><b>Blue and informational, because that is how Reach raises
+	/// it</b> — see <c>AcknowledgementNotifier</c>. Nothing here
+	/// recognises the kind as special any more: it is quiet because it is
+	/// blue and it offers Close because nobody has to take it on, exactly
+	/// as any other alert with those two fields would.</para>
 	/// </summary>
 	public static HandAlert Notice(
 		long id,
@@ -300,7 +320,13 @@ internal static class Alerts
 		string by = "Jo B",
 		long expiresAt = 0)
 	{
-		var notice = New(id, HandAlert.KindMessageAcknowledged, expiresAt, $"notice-{id}");
+		var notice = New(
+			id,
+			HandAlert.KindMessageAcknowledged,
+			expiresAt,
+			$"notice-{id}",
+			HandAlert.LevelBlue,
+			HandAlert.ResponseNone);
 		notice.Title = $"{by} acknowledged";
 		notice.Body = "Shift uncovered";
 
