@@ -1,6 +1,7 @@
 using Android.App;
 using Android.Content.PM;
 using Android.OS;
+using AndroidX.Core.View;
 using TheBleedingDeacons.Intergroup.Hand.Services;
 
 namespace TheBleedingDeacons.Intergroup.Hand;
@@ -51,6 +52,72 @@ public class MainActivity : MauiAppCompatActivity
 		{
 			SetShowWhenLocked(true);
 			SetTurnScreenOn(true);
+		}
+
+		ApplySystemBarInsets();
+	}
+
+	/// <summary>
+	/// Keep the app's content out from under the status and navigation
+	/// bars.
+	///
+	/// <para><b>Android draws behind them now whether we ask or not.</b>
+	/// Android 15 began enforcing edge-to-edge for apps targeting SDK 35+
+	/// and Android 16 removed the opt-out, so the window fills the display
+	/// and the system bars are painted over the top of it. Without this
+	/// the duty header renders underneath the clock — which is the line a
+	/// responder reads first, and the one that says whether anything is
+	/// waiting.</para>
+	///
+	/// <para><b>Here rather than in the XAML.</b> MAUI's
+	/// <c>SafeAreaEdges</c> compiles on Android but does not inset
+	/// anything on it, and a per-page property would in any case be four
+	/// places to forget — every page this app has draws its own root
+	/// layout. Padding the single content view covers all of them at
+	/// once, and any page added later.</para>
+	///
+	/// <para>Read from the live insets rather than from a measured status
+	/// bar height: the two differ on handsets with a cutout, and the
+	/// listener also re-runs when they change — a call in progress, or a
+	/// switch between gesture and button navigation, both resize the
+	/// bars under a running app.</para>
+	/// </summary>
+	private void ApplySystemBarInsets()
+	{
+		var content = FindViewById(Android.Resource.Id.Content);
+		if (content is null)
+		{
+			return;
+		}
+
+		ViewCompat.SetOnApplyWindowInsetsListener(content, new SystemBarInsetListener());
+	}
+
+	/// <summary>
+	/// Pads the content view by whatever the system bars currently
+	/// occupy. See <see cref="ApplySystemBarInsets"/>.
+	///
+	/// <para>The insets are returned rather than consumed, so anything
+	/// else that wants to know about them still hears.</para>
+	/// </summary>
+	private sealed class SystemBarInsetListener : Java.Lang.Object, IOnApplyWindowInsetsListener
+	{
+		public WindowInsetsCompat OnApplyWindowInsets(
+			Android.Views.View view,
+			WindowInsetsCompat insets)
+		{
+			ArgumentNullException.ThrowIfNull(view);
+			ArgumentNullException.ThrowIfNull(insets);
+
+			// System bars and the display cutout together: a punch-hole or
+			// notch is not part of the status bar inset, and a handset held
+			// in a case that covers one still must not lose its header.
+			var bars = insets.GetInsets(
+				WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
+
+			view.SetPadding(bars.Left, bars.Top, bars.Right, bars.Bottom);
+
+			return insets;
 		}
 	}
 
