@@ -550,18 +550,18 @@ public sealed class HandAlertTests
 	/// only place anything can test it.
 	/// </summary>
 	[Theory]
-	[InlineData(HandAlert.LevelRed, "#B3261E", "#FFFFFF")]
-	[InlineData(HandAlert.LevelYellow, "#F9A825", "#241A00")]
-	[InlineData(HandAlert.LevelBlue, "#1565C0", "#FFFFFF")]
-	public void TheCardIsTheColourOfItsLevel(string level, string background, string foreground)
+	[InlineData(HandAlert.LevelRed, "#B3261E")]
+	[InlineData(HandAlert.LevelYellow, "#F9A825")]
+	[InlineData(HandAlert.LevelBlue, "#1565C0")]
+	public void TheCardIsTheColourOfItsLevel(string level, string background)
 	{
 		var alert = Alerts.New(level: level);
 
 		Assert.Equal(background, alert.LevelBackground);
 
-		// Yellow takes near-black text; white on it cannot be read, and a
-		// card that cannot be read at 3am is worse than a wrong colour.
-		Assert.Equal(foreground, alert.LevelForeground);
+		// White on all three: the three cards differ by field colour and
+		// nothing else, so none of them reads as a different component.
+		Assert.Equal("#FFFFFF", alert.LevelForeground);
 	}
 
 	/// <summary>

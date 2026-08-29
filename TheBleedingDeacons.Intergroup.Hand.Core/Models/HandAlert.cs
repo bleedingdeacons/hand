@@ -341,15 +341,24 @@ public partial class HandAlert : ObservableObject
 	};
 
 	/// <summary>
-	/// What is legible on <see cref="LevelBackground"/>: white on the two
-	/// dark fields, near-black on yellow.
+	/// What is drawn on <see cref="LevelBackground"/>: white, on every
+	/// level.
 	///
-	/// <para>A pair rather than a single background property because
-	/// white on <c>#F9A825</c> is not readable, and a card whose text
-	/// cannot be read at 3am is worse than one that is the wrong
-	/// colour.</para>
+	/// <para>Still a property rather than a literal in the XAML, because
+	/// the card binds its text, its button and its border to it in five
+	/// places. One of them left behind when a level is added or a colour
+	/// changes is a card with a stray white label on a field that no
+	/// longer suits it.</para>
+	///
+	/// <para>Yellow briefly took near-black here, on the grounds that
+	/// white on <c>#F9A825</c> is thin. It reads as a different component
+	/// rather than a warmer one of the same kind — one card in three
+	/// inverting its text and its button is more jarring than the contrast
+	/// is worth. Uniform white it is; if yellow needs more contrast the
+	/// answer is a deeper amber in <see cref="LevelBackground"/>, which
+	/// keeps all three cards the same shape.</para>
 	/// </summary>
-	public string LevelForeground => IsWarning ? "#241A00" : "#FFFFFF";
+	public string LevelForeground => "#FFFFFF";
 
 	/// <summary>
 	/// What a secure lock screen is <i>offered</i> in place of the alert.
