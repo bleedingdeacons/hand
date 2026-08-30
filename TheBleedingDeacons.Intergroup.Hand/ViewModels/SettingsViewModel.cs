@@ -16,7 +16,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 	private readonly IDeviceAuthService _auth;
 	private readonly IAlertService _alerts;
 	private readonly IAppLock _lock;
-	private readonly IWindowVisibility _window;
+
 
 	/// <summary>
 	/// Whether <see cref="ApplyAsync"/> is already running. See the toggle
@@ -28,14 +28,19 @@ public sealed partial class SettingsViewModel : ObservableObject
 		IConfigurationService configuration,
 		IDeviceAuthService auth,
 		IAlertService alerts,
-		IAppLock appLock,
-		IWindowVisibility window)
+		IAppLock appLock)
 	{
 		_configuration = configuration;
 		_auth = auth;
 		_alerts = alerts;
 		_lock = appLock;
-		_window = window;
+
+		// <b>Held shut while the stored values are loaded in.</b> Setting
+		// these raises the toggle handlers, which apply — so a handset with
+		// the fingerprint lock already on would ask for a fingerprint while
+		// the settings page was still being constructed, before anybody had
+		// touched anything. See ApplyAsync.
+		_applying = true;
 
 		var reach = _configuration.GetReachConfiguration();
 		BaseUrl = reach.BaseUrl;
@@ -43,6 +48,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 		Poll = reach.Poll;
 		DeviceLabel = _configuration.DeviceLabel;
 		RequireFingerprint = _configuration.AppLockEnabled;
+
+		_applying = false;
 	}
 
 	/// <summary>
@@ -106,12 +113,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 	public bool FingerprintUnavailable => !FingerprintAvailable;
 
-	/// <summary>
-	/// Whether to offer the Close button. False on the Apple heads, which
-	/// will not let an app put itself away — see
-	/// <see cref="IWindowVisibility"/>.
-	/// </summary>
-	public bool CanHide => _window.CanHide;
 
 	[ObservableProperty]
 	public partial string StatusMessage { get; set; } = string.Empty;
@@ -251,21 +252,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 	partial void OnRequireFingerprintChanged(bool value) => _ = ApplyAsync();
 
-	/// <summary>
-	/// Put Hand out of the way without taking the handset off duty.
-	///
-	/// <para>The button this sits behind exists because the two things a
-	/// responder might mean by "close this" have opposite consequences,
-	/// and only one of them is on this page by default. Sign out ends the
-	/// shift; this ends nothing. See <see cref="IWindowVisibility"/>.</para>
-	/// </summary>
-	[RelayCommand]
-	private void Hide()
-	{
-		// No status message: the app is about to stop being on screen, so
-		// there would be nobody to read it.
-		_window.Hide();
-	}
 
 	[RelayCommand]
 	private async Task SignOutAsync()

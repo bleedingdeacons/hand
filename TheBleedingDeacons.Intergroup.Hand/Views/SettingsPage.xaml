@@ -131,31 +131,21 @@
                 FontSize="13"
                 Opacity="0.8" />
 
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
-
             <!--
-                Two ways to be rid of this screen, and they are nothing
-                alike. Close is first and plainly styled because it is the
-                one a responder almost always wants; sign out is last and
-                red because it ends the shift. Hidden entirely on the Apple
-                heads, which will not let an app put itself away &#8212; see
-                IWindowVisibility.
+                One way off this screen, and it is the one that ends the
+                shift. Red and last because of it.
+
+                There used to be a Close button above this, which put the
+                app out of the way without taking the handset off duty. It
+                is gone: every platform already has its own way of putting
+                an app aside — the back gesture, the home button, the
+                window controls — and a button that duplicated one of them
+                sat directly above the one control here that cannot be
+                undone. Two buttons of the same size and shape, one
+                harmless and one ending the shift, is not an arrangement
+                worth keeping for a convenience the handset already
+                offers.
             -->
-            <Button
-                Text="Close"
-                IsVisible="{Binding CanHide}"
-                HeightRequest="48"
-                FontSize="14"
-                Command="{Binding HideCommand}" />
-
-            <Label
-                Text="Puts Hand out of the way without taking this handset off duty. It keeps checking for alerts and it will still ring."
-                IsVisible="{Binding CanHide}"
-                FontSize="12"
-                Opacity="0.6" />
-
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
-
             <Button
                 Text="Sign out"
                 HeightRequest="48"
@@ -165,7 +155,7 @@
                 Command="{Binding SignOutCommand}" />
 
             <Label
-                Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. Use Close to put Hand away and stay on duty."
+                Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. To put Hand away and stay on duty, use the phone&#8217;s own back or home gesture instead."
                 FontSize="12"
                 Opacity="0.6"
                 TextColor="#663C00" />
