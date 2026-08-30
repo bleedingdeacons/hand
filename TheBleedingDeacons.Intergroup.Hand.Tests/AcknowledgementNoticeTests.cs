@@ -26,8 +26,11 @@ public sealed class AcknowledgementNoticeTests
 	private readonly FakeAlarm _alarm = new();
 	private readonly FakePresenter _presenter = new();
 	private readonly InlineDispatcher _dispatcher = new();
+	private readonly InMemoryAlertHistoryStore _historyStore = new();
 
-	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher);
+	private AlertHistory History => field ??= new AlertHistory(_historyStore, _dispatcher);
+
+	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher, History);
 
 	// ── It never alarms ───────────────────────────────────────────────
 

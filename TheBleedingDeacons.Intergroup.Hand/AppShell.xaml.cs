@@ -12,5 +12,10 @@ public partial class AppShell : Shell
 		// reached from the duty screen and should be a page you come back
 		// from, not somewhere the app can be left sitting.
 		Routing.RegisterRoute("settings", typeof(SettingsPage));
+
+		// History likewise: somewhere you go, look at, and come back from.
+		// It is emphatically not a place a duty handset should be left
+		// sitting — the alerts page is.
+		Routing.RegisterRoute("history", typeof(HistoryPage));
 	}
 }

@@ -267,6 +267,40 @@ internal sealed class FakeReachClient : IReachClient
 	}
 }
 
+/// <summary>
+/// Holds the history document in memory instead of on disk.
+///
+/// <para>Deliberately a store rather than a fake <c>IAlertHistory</c>:
+/// the tests that use it are about what the alert loop records, and a
+/// stubbed history would let them pass while the real one wrote nothing.
+/// This keeps the actual <c>AlertHistory</c> in the path, including its
+/// JSON round trip.</para>
+/// </summary>
+internal sealed class InMemoryAlertHistoryStore : IAlertHistoryStore
+{
+	public string Contents { get; set; } = string.Empty;
+
+	public int Writes { get; private set; }
+
+	public Task<string> ReadAsync() => Task.FromResult(Contents);
+
+	public Task WriteAsync(string contents)
+	{
+		Contents = contents;
+		Writes++;
+
+		return Task.CompletedTask;
+	}
+}
+
+/// <summary>A store that cannot be read or written. See AlertHistory.</summary>
+internal sealed class BrokenAlertHistoryStore : IAlertHistoryStore
+{
+	public Task<string> ReadAsync() => throw new IOException("no");
+
+	public Task WriteAsync(string contents) => throw new IOException("no");
+}
+
 /// <summary>Shorthand for building alerts in tests.</summary>
 internal static class Alerts
 {

@@ -152,6 +152,12 @@ public static class MauiProgram
 		// Singleton, and the only thing that talks to the alert endpoints:
 		// it owns the poll timer and the de-duplication of alerts arriving by
 		// both push and poll, neither of which survives being rebuilt per page.
+		// One history, shared: the alert loop writes it and the history
+		// page reads it, and a second instance would mean a page showing a
+		// list that never changes.
+		builder.Services.AddSingleton<IAlertHistoryStore, AlertHistoryStore>();
+		builder.Services.AddSingleton<IAlertHistory, AlertHistory>();
+
 		builder.Services.AddSingleton<IAlertService, AlertService>();
 
 		builder.Services.AddSingleton<IPlatformAlertPresenter, PlatformAlertPresenter>();
@@ -165,6 +171,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<SettingsViewModel>();
 		builder.Services.AddTransient<LockPage>();
 		builder.Services.AddTransient<LockViewModel>();
+		builder.Services.AddTransient<HistoryPage>();
+		builder.Services.AddTransient<HistoryViewModel>();
 
 #if DEBUG
 		builder.Services.AddLogging();

@@ -21,6 +21,22 @@ public partial class SettingsPage : ContentPage
 	/// enrol a fingerprint comes back here expecting the checkbox to work,
 	/// and an answer cached at construction would still say it cannot.</para>
 	/// </summary>
+	/// <summary>
+	/// Open the history. Navigation rather than a command because that is
+	/// all it is; the view model has nothing to say about it.
+	/// </summary>
+	private async void OnHistoryClicked(object? sender, EventArgs e)
+	{
+		try
+		{
+			await Shell.Current.GoToAsync("history");
+		}
+		catch (Exception ex)
+		{
+			Serilog.Log.Warning(ex, "The history page could not be opened");
+		}
+	}
+
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();

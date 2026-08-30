@@ -28,6 +28,21 @@
             <Label Text="Signed in as" FontSize="13" Opacity="0.6" />
             <Label Text="{Binding Responder}" FontSize="18" FontAttributes="Bold" />
 
+            <!--
+                History lives behind here rather than on the duty screen.
+                That screen exists to put an acknowledge button in front of
+                somebody who has just been woken up, and a fourth control
+                in its header would be one more thing between them and it —
+                the same argument AppShell makes for having no flyout. What
+                the history answers is a morning-after question, and the
+                morning after is not a hurry.
+            -->
+            <Button
+                Text="Alert history"
+                HeightRequest="48"
+                FontSize="14"
+                Clicked="OnHistoryClicked" />
+
             <Label Text="{Binding DeliveryMode}" FontSize="13" Opacity="0.7" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />

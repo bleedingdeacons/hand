@@ -39,6 +39,7 @@ public sealed class AlertService : IAlertService, IDisposable
 	private readonly IAlertAlarm _alarm;
 	private readonly IPlatformAlertPresenter _presenter;
 	private readonly IUiDispatcher _dispatcher;
+	private readonly IAlertHistory _history;
 
 	private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -73,14 +74,19 @@ public sealed class AlertService : IAlertService, IDisposable
 		IConfigurationService configuration,
 		IAlertAlarm alarm,
 		IPlatformAlertPresenter presenter,
-		IUiDispatcher dispatcher)
+		IUiDispatcher dispatcher,
+		IAlertHistory history)
 	{
 		_reach = reach ?? throw new ArgumentNullException(nameof(reach));
 		_configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 		_alarm = alarm ?? throw new ArgumentNullException(nameof(alarm));
 		_presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
 		_dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+		_history = history ?? throw new ArgumentNullException(nameof(history));
 	}
+
+	/// <summary>Now, as the history records it.</summary>
+	private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
 	public ObservableCollection<HandAlert> Active { get; } = [];
 
@@ -220,6 +226,13 @@ public sealed class AlertService : IAlertService, IDisposable
 		else
 		{
 			await SettleAsync(alert).ConfigureAwait(false);
+
+			// Only the branch that took something on. An informational card
+			// was recorded as closed the moment it arrived — there was
+			// never anything outstanding about it to resolve.
+			await _history
+				.SettleAsync(alert.Id, AlertHistoryStatus.Acknowledged, Now)
+				.ConfigureAwait(false);
 		}
 
 		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
@@ -403,6 +416,14 @@ public sealed class AlertService : IAlertService, IDisposable
 		// worth showing again.
 		if (alert.IsAcknowledgementNotice)
 		{
+			// The history hears about it before the expiry check below, for
+			// the same reason the removal does: a notice is a statement
+			// about the past that goes on being true, and a late one still
+			// says who answered.
+			await _history
+				.AnsweredElsewhereAsync(alert.AcknowledgesMessage, alert.AcknowledgedByName, Now)
+				.ConfigureAwait(false);
+
 			await RemoveMessageAsync(alert).ConfigureAwait(false);
 		}
 
@@ -413,6 +434,16 @@ public sealed class AlertService : IAlertService, IDisposable
 		// stopped mattering an hour ago.
 		if (alert.IsExpired(now))
 		{
+			// Remembered even though it is never shown. "Nothing arrived"
+			// and "something arrived while the handset was in a tunnel and
+			// had gone stale by the time it surfaced" are different
+			// answers, and the second is the one worth having the morning
+			// after.
+			await _history.RecordAsync(alert, alert.CreatedAt).ConfigureAwait(false);
+			await _history
+				.SettleAsync(alert.Id, AlertHistoryStatus.Expired, Now)
+				.ConfigureAwait(false);
+
 			Log.Debug("Alert {AlertId} ignored: already expired", alert.Id);
 			return;
 		}
@@ -440,6 +471,11 @@ public sealed class AlertService : IAlertService, IDisposable
 		{
 			return;
 		}
+
+		// Recorded on admission rather than on arrival, so the push and the
+		// poll that follows it produce one row rather than two — the
+		// duplicate is already resolved above.
+		await _history.RecordAsync(alert, Now).ConfigureAwait(false);
 
 		Log.Information(
 			"Alert {AlertId} admitted: {Kind} {Reference} ({Level}, {Response})",
