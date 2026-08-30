@@ -15,15 +15,18 @@ public sealed partial class AlertsViewModel : ObservableObject
 	private readonly IAlertService _alerts;
 	private readonly IDeviceAuthService _auth;
 	private readonly IConfigurationService _configuration;
+	private readonly IWindowVisibility _window;
 
 	public AlertsViewModel(
 		IAlertService alerts,
 		IDeviceAuthService auth,
-		IConfigurationService configuration)
+		IConfigurationService configuration,
+		IWindowVisibility window)
 	{
 		_alerts = alerts;
 		_auth = auth;
 		_configuration = configuration;
+		_window = window;
 
 		Alerts.CollectionChanged += (_, _) =>
 		{
@@ -143,6 +146,33 @@ public sealed partial class AlertsViewModel : ObservableObject
 	{
 		await Shell.Current.GoToAsync("settings").ConfigureAwait(false);
 	}
+
+	/// <summary>
+	/// Whether to offer the Hide button. False on the Apple heads, which
+	/// will not let an app put itself away — see
+	/// <see cref="IWindowVisibility"/>. A button that did nothing would be
+	/// worse than no button.
+	/// </summary>
+	public bool CanHide => _window.CanHide;
+
+	/// <summary>
+	/// Put Hand out of the way without taking the handset off duty.
+	///
+	/// <para><b>It is not the same as leaving by the back gesture, and
+	/// that is why it is here.</b> This screen is where a duty handset
+	/// sits, and a responder who wants the phone to look like a phone
+	/// again should be able to say so from it — without wondering whether
+	/// what they just pressed also took them off the rota. Nothing about
+	/// this ends the shift: the poll keeps running, the push keeps
+	/// arriving, and the handset still rings.</para>
+	///
+	/// <para>A button of this shape used to be on the settings page,
+	/// directly above Sign out, and was removed because the two looked
+	/// alike and only one of them was harmless. Here there is nothing
+	/// destructive within reach of it.</para>
+	/// </summary>
+	[RelayCommand]
+	private void Hide() => _window.Hide();
 
 	/// <summary>
 	/// What arrived and what became of it.
