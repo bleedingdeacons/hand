@@ -80,11 +80,6 @@
                 Keyboard="Numeric"
                 Text="{Binding PollSeconds}"
                 Unfocused="OnFieldCommitted" />
-            <Label
-                FontSize="12"
-                Opacity="0.6"
-                Text="How often this handset asks Reach for alerts. On Windows and macOS there is no push, so this is how alerts arrive." />
-
             <!--
                 Off means push only. Worth the warning underneath: the poll
                 is what covers a push that silently stopped working, and a
