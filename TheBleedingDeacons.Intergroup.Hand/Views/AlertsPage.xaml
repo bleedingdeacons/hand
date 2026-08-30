@@ -18,7 +18,7 @@
         phone from two metres away in the dark.
     -->
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="0">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="0">
 
         <!-- Status bar: who is on duty, and whether anything is waiting. -->
         <!--
@@ -195,10 +195,34 @@
         <Button
             Grid.Row="2"
             Text="Acknowledge all"
-            Margin="12"
+            Margin="12,12,12,0"
             HeightRequest="52"
             IsVisible="{Binding HasAlerts}"
             Command="{Binding AcknowledgeAllCommand}" />
+
+        <!--
+            Puts the phone back to looking like a phone, without taking
+            the handset off the rota.
+
+            At the base and plainly styled, because it is the one thing on
+            this screen that is not about an alert. It is deliberately not
+            the back gesture: leaving by that route works too, but a
+            responder who wants Hand out of the way should be able to say
+            so and know that nothing they pressed ended the shift. The poll
+            keeps running and the handset still rings.
+
+            There is nothing destructive beside it. The same button used to
+            sit on the settings page directly above Sign out, which is why
+            it is not there any more.
+        -->
+        <Button
+            Grid.Row="3"
+            Text="Hide"
+            Margin="12"
+            HeightRequest="48"
+            FontSize="14"
+            IsVisible="{Binding CanHide}"
+            Command="{Binding HideCommand}" />
 
     </Grid>
 </ContentPage>
