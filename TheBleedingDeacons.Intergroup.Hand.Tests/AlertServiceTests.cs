@@ -23,8 +23,11 @@ public sealed class AlertServiceTests
 	private readonly FakeAlarm _alarm = new();
 	private readonly FakePresenter _presenter = new();
 	private readonly InlineDispatcher _dispatcher = new();
+	private readonly InMemoryAlertHistoryStore _historyStore = new();
 
-	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher);
+	private AlertHistory History => field ??= new AlertHistory(_historyStore, _dispatcher);
+
+	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher, History);
 
 	/// <summary>
 	/// A push this handset could not open is reported to Reach.
@@ -100,11 +103,12 @@ public sealed class AlertServiceTests
 	[Fact]
 	public void Constructor_RefusesItsDependenciesBeingNull()
 	{
-		Assert.Throws<ArgumentNullException>(() => new AlertService(null!, _config, _alarm, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, null!, _alarm, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, null!, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, null!, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, null!));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(null!, _config, _alarm, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, null!, _alarm, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, null!, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, null!, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, null!, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, _dispatcher, null!));
 	}
 
 	// ── Admission ─────────────────────────────────────────────────────
@@ -649,8 +653,14 @@ public sealed class AlertServiceTests
 			{
 				PendingAlerts = ReachResult<IReadOnlyList<HandAlert>>.Fail(failure, string.Empty),
 			};
+			var dispatcher = new InlineDispatcher();
 			using var service = new AlertService(
-				reach, new FakeConfigurationService { DeviceToken = "abc" }, new FakeAlarm(), new FakePresenter(), new InlineDispatcher());
+				reach,
+				new FakeConfigurationService { DeviceToken = "abc" },
+				new FakeAlarm(),
+				new FakePresenter(),
+				dispatcher,
+				new AlertHistory(new InMemoryAlertHistoryStore(), dispatcher));
 			service.AuthenticationLost += (_, e) => reasons.Add(e.Reason);
 
 			await service.RefreshAsync();
