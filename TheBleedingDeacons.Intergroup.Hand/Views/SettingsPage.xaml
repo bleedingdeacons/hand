@@ -3,6 +3,7 @@
     x:Class="TheBleedingDeacons.Intergroup.Hand.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
     x:DataType="vm:SettingsViewModel"
     Title="Settings">
@@ -28,21 +29,6 @@
             <Label Text="Signed in as" FontSize="13" Opacity="0.6" />
             <Label Text="{Binding Responder}" FontSize="18" FontAttributes="Bold" />
 
-            <!--
-                History lives behind here rather than on the duty screen.
-                That screen exists to put an acknowledge button in front of
-                somebody who has just been woken up, and a fourth control
-                in its header would be one more thing between them and it —
-                the same argument AppShell makes for having no flyout. What
-                the history answers is a morning-after question, and the
-                morning after is not a hurry.
-            -->
-            <Button
-                Text="Alert history"
-                HeightRequest="48"
-                FontSize="14"
-                Clicked="OnHistoryClicked" />
-
             <Label Text="{Binding DeliveryMode}" FontSize="13" Opacity="0.7" />
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
@@ -52,13 +38,17 @@
                 Placeholder="https://your-intergroup.example/"
                 Keyboard="Url"
                 FontSize="14"
-                Text="{Binding BaseUrl}" />
+                Text="{Binding BaseUrl}"
+                Completed="OnFieldCommitted"
+                Unfocused="OnFieldCommitted" />
 
             <Label Text="Check for alerts every (seconds)" FontSize="13" Opacity="0.6" />
             <Entry
                 Keyboard="Numeric"
                 FontSize="14"
-                Text="{Binding PollSeconds}" />
+                Text="{Binding PollSeconds}"
+                Completed="OnFieldCommitted"
+                Unfocused="OnFieldCommitted" />
             <Label
                 Text="How often this handset asks Reach for alerts. On Windows and macOS there is no push, so this is how alerts arrive."
                 FontSize="12"
@@ -85,7 +75,9 @@
             <Entry
                 Placeholder="This handset"
                 FontSize="14"
-                Text="{Binding DeviceLabel}" />
+                Text="{Binding DeviceLabel}"
+                Completed="OnFieldCommitted"
+                Unfocused="OnFieldCommitted" />
             <Label
                 Text="Shown in Reach&#8217;s admin list so an administrator can tell handsets apart."
                 FontSize="12"
@@ -121,10 +113,21 @@
 
             <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
 
-            <Button Text="Save" HeightRequest="48" FontSize="14" Command="{Binding SaveCommand}" />
+            <!--
+                No Save button. A settings page with one has two states —
+                what is on screen and what is in force — and nothing on a
+                handset says which you are looking at. So the toggles apply
+                as they are set, the text fields apply as they are left,
+                and the page applies again on the way out for anything
+                typed and never unfocused. See SettingsViewModel.ApplyAsync.
 
+                The label below is no longer a receipt. It is empty when
+                everything worked, and carries the two things a responder
+                does need telling: a refused fingerprint, and a failure.
+            -->
             <Label
                 Text="{Binding StatusMessage}"
+                IsVisible="{Binding StatusMessage, Converter={toolkit:IsStringNotNullOrEmptyConverter}}"
                 FontSize="13"
                 Opacity="0.8" />
 

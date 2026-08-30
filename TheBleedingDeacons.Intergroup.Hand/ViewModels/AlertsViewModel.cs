@@ -144,6 +144,20 @@ public sealed partial class AlertsViewModel : ObservableObject
 		await Shell.Current.GoToAsync("settings").ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// What arrived and what became of it.
+	///
+	/// <para>On the duty screen rather than behind settings, and before
+	/// Settings rather than after it: the history is the more likely of
+	/// the two to be wanted, and a responder reaching for it should not
+	/// have to go through a page of switches to find it.</para>
+	/// </summary>
+	[RelayCommand]
+	private static async Task OpenHistoryAsync()
+	{
+		await Shell.Current.GoToAsync("history").ConfigureAwait(false);
+	}
+
 	/// <summary>Re-read anything that can change while the page is away.</summary>
 	public void Refresh()
 	{
