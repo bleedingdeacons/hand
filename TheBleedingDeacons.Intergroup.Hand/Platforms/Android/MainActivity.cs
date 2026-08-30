@@ -95,10 +95,23 @@ public class MainActivity : MauiAppCompatActivity
 
 	/// <summary>
 	/// Pads the content view by whatever the system bars currently
-	/// occupy. See <see cref="ApplySystemBarInsets"/>.
+	/// occupy, and then reports them as spent. See
+	/// <see cref="ApplySystemBarInsets"/>.
 	///
-	/// <para>The insets are returned rather than consumed, so anything
-	/// else that wants to know about them still hears.</para>
+	/// <para><b>Reporting them as spent is half the fix, not a tidy-up.</b>
+	/// Shell insets its own toolbar for the status bar, which is why a page
+	/// with a navigation bar never overlapped in the first place. Padding
+	/// here and leaving the insets intact means both happen: the page is
+	/// pushed down once by this and the toolbar reserves the same height
+	/// again inside it, which renders as a stray band of toolbar colour
+	/// under the real status bar. Padding once and handing the children
+	/// zero is what makes the two agree.</para>
+	///
+	/// <para><b>Only the bars are cleared, and the rest is passed
+	/// through.</b> The keyboard is an inset too, and consuming everything
+	/// — which is what <c>WindowInsetsCompat.Consumed</c> does — would take
+	/// the IME inset with it and stop MAUI lifting the Reach address and
+	/// device name fields clear of the keyboard.</para>
 	/// </summary>
 	private sealed class SystemBarInsetListener : Java.Lang.Object, IOnApplyWindowInsetsListener
 	{
@@ -112,12 +125,16 @@ public class MainActivity : MauiAppCompatActivity
 			// System bars and the display cutout together: a punch-hole or
 			// notch is not part of the status bar inset, and a handset held
 			// in a case that covers one still must not lose its header.
-			var bars = insets.GetInsets(
-				WindowInsetsCompat.Type.SystemBars() | WindowInsetsCompat.Type.DisplayCutout());
+			var types = WindowInsetsCompat.Type.SystemBars()
+				| WindowInsetsCompat.Type.DisplayCutout();
+
+			var bars = insets.GetInsets(types);
 
 			view.SetPadding(bars.Left, bars.Top, bars.Right, bars.Bottom);
 
-			return insets;
+			return new WindowInsetsCompat.Builder(insets)
+				.SetInsets(types, AndroidX.Core.Graphics.Insets.None)
+				.Build();
 		}
 	}
 

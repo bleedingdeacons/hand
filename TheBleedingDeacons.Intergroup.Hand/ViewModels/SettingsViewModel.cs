@@ -16,20 +16,31 @@ public sealed partial class SettingsViewModel : ObservableObject
 	private readonly IDeviceAuthService _auth;
 	private readonly IAlertService _alerts;
 	private readonly IAppLock _lock;
-	private readonly IWindowVisibility _window;
+
+
+	/// <summary>
+	/// Whether <see cref="ApplyAsync"/> is already running. See the toggle
+	/// handlers on why re-entrancy is the normal case rather than a race.
+	/// </summary>
+	private bool _applying;
 
 	public SettingsViewModel(
 		IConfigurationService configuration,
 		IDeviceAuthService auth,
 		IAlertService alerts,
-		IAppLock appLock,
-		IWindowVisibility window)
+		IAppLock appLock)
 	{
 		_configuration = configuration;
 		_auth = auth;
 		_alerts = alerts;
 		_lock = appLock;
-		_window = window;
+
+		// <b>Held shut while the stored values are loaded in.</b> Setting
+		// these raises the toggle handlers, which apply — so a handset with
+		// the fingerprint lock already on would ask for a fingerprint while
+		// the settings page was still being constructed, before anybody had
+		// touched anything. See ApplyAsync.
+		_applying = true;
 
 		var reach = _configuration.GetReachConfiguration();
 		BaseUrl = reach.BaseUrl;
@@ -37,6 +48,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 		Poll = reach.Poll;
 		DeviceLabel = _configuration.DeviceLabel;
 		RequireFingerprint = _configuration.AppLockEnabled;
+
+		_applying = false;
 	}
 
 	/// <summary>
@@ -82,10 +95,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 	/// <summary>
 	/// Whether opening Hand should ask for a fingerprint first.
 	///
-	/// <para>Saved with everything else on this page rather than the
-	/// moment it is ticked, and proved before it is saved — see
-	/// <see cref="SaveAsync"/> for why turning it on asks for the
-	/// fingerprint there and then.</para>
+	/// <para>Applied the moment it is ticked, and proved before it is
+	/// stored — see <see cref="ApplyAsync"/> for why turning it on asks
+	/// for the fingerprint there and then.</para>
 	/// </summary>
 	[ObservableProperty]
 	public partial bool RequireFingerprint { get; set; }
@@ -101,12 +113,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 	public bool FingerprintUnavailable => !FingerprintAvailable;
 
-	/// <summary>
-	/// Whether to offer the Close button. False on the Apple heads, which
-	/// will not let an app put itself away — see
-	/// <see cref="IWindowVisibility"/>.
-	/// </summary>
-	public bool CanHide => _window.CanHide;
 
 	[ObservableProperty]
 	public partial string StatusMessage { get; set; } = string.Empty;
@@ -134,9 +140,30 @@ public sealed partial class SettingsViewModel : ObservableObject
 	/// </summary>
 	public string Build => BuildInfo.Summary;
 
-	[RelayCommand]
-	private async Task SaveAsync()
+	/// <summary>
+	/// Store what is on screen, and make it take effect.
+	///
+	/// <para><b>There is no Save button any more.</b> A settings page with
+	/// one has two states — what is on screen and what is in force — and
+	/// nothing on a handset says which you are looking at. A responder who
+	/// changed the poll interval, was interrupted, and came back to a page
+	/// still showing their change had no way to tell it had never been
+	/// applied. So the toggles apply as they are set and the text fields
+	/// apply when they are left; see the callers.</para>
+	///
+	/// <para><b>Idempotent, and safe to call when nothing changed.</b> The
+	/// page calls it on the way out as well, because a responder can type
+	/// into a field and navigate away without ever unfocusing it.</para>
+	/// </summary>
+	public async Task ApplyAsync()
 	{
+		if (_applying)
+		{
+			return;
+		}
+
+		_applying = true;
+
 		try
 		{
 			var configuration = _configuration.GetReachConfiguration();
@@ -148,13 +175,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 			_configuration.DeviceLabel = DeviceLabel;
 
 			// Turning the lock on is proved before it is stored. A responder
-			// who ticks this box, presses Save, and only discovers at the next
-			// launch that the sensor will not take their finger has been let
-			// down by this screen rather than by the sensor — so the ask
-			// happens here, while there is somebody looking at it who can be
-			// told. Turning it off is not proved: nobody has to prove they are
-			// allowed to make a handset easier to open, and requiring it would
-			// trap a responder whose finger has stopped working.
+			// who ticks this box and only discovers at the next launch that
+			// the sensor will not take their finger has been let down by this
+			// screen rather than by the sensor — so the ask happens here,
+			// while there is somebody looking at it who can be told. Turning
+			// it off is not proved: nobody has to prove they are allowed to
+			// make a handset easier to open, and requiring it would trap a
+			// responder whose finger has stopped working.
 			string? lockRefusal = null;
 
 			if (RequireFingerprint && !_configuration.AppLockEnabled)
@@ -167,9 +194,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 				{
 					AppLockResult.Unlocked => null,
 					AppLockResult.Unavailable =>
-						"Saved, but the fingerprint lock is off: this handset cannot ask for one.",
+						"The fingerprint lock is off: this handset cannot ask for one.",
 					_ =>
-						"Saved, but the fingerprint lock is off: the fingerprint was not confirmed.",
+						"The fingerprint lock is off: the fingerprint was not confirmed.",
 				};
 			}
 
@@ -191,30 +218,40 @@ public sealed partial class SettingsViewModel : ObservableObject
 			await _alerts.StopAsync().ConfigureAwait(false);
 			await _alerts.StartAsync().ConfigureAwait(false);
 
-			StatusMessage = lockRefusal ?? "Saved.";
+			// Silent when it worked. With no Save button there is no moment
+			// to confirm, and a page that said "Saved." every time a field
+			// lost focus would be a page that cried it constantly. The
+			// message is kept for the two things a responder does need
+			// telling: a refused fingerprint, and a failure.
+			StatusMessage = lockRefusal ?? string.Empty;
 		}
 		catch (Exception ex)
 		{
 			Log.Error(ex, "Settings could not be saved");
 			StatusMessage = "Could not save those settings.";
 		}
+		finally
+		{
+			_applying = false;
+		}
 	}
 
 	/// <summary>
-	/// Put Hand out of the way without taking the handset off duty.
+	/// Apply as soon as a switch or a checkbox moves.
 	///
-	/// <para>The button this sits behind exists because the two things a
-	/// responder might mean by "close this" have opposite consequences,
-	/// and only one of them is on this page by default. Sign out ends the
-	/// shift; this ends nothing. See <see cref="IWindowVisibility"/>.</para>
+	/// <para>A toggle is a finished decision the moment it is made, unlike
+	/// a half-typed address — so these do not wait to lose focus. Fire and
+	/// forget because a property setter cannot await, and
+	/// <see cref="ApplyAsync"/> owns its own errors.</para>
+	///
+	/// <para>The guard inside <see cref="ApplyAsync"/> is what stops this
+	/// looping: applying re-reads the stored values and writes them back to
+	/// these same properties, which raises these again.</para>
 	/// </summary>
-	[RelayCommand]
-	private void Hide()
-	{
-		// No status message: the app is about to stop being on screen, so
-		// there would be nobody to read it.
-		_window.Hide();
-	}
+	partial void OnPollChanged(bool value) => _ = ApplyAsync();
+
+	partial void OnRequireFingerprintChanged(bool value) => _ = ApplyAsync();
+
 
 	[RelayCommand]
 	private async Task SignOutAsync()

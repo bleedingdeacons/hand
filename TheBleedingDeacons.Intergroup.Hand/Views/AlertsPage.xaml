@@ -21,7 +21,15 @@
     <Grid RowDefinitions="Auto,*,Auto" Padding="0">
 
         <!-- Status bar: who is on duty, and whether anything is waiting. -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Padding="16,14" ColumnSpacing="12">
+        <!--
+            Four columns now, and they are tight. History earns its place
+            beside Settings rather than behind it, but two buttons plus the
+            duty switch leave the status line little room — so both buttons
+            are as small as they can be and still be hit by somebody who
+            has just woken up. Anything more here and the line wraps to
+            three.
+        -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Padding="12,14" ColumnSpacing="6">
             <VerticalStackLayout Grid.Column="0" Spacing="2">
                 <Label Text="{Binding StatusLine}" FontSize="18" FontAttributes="Bold" />
                 <Label Text="{Binding Responder}" FontSize="13" Opacity="0.7" />
@@ -35,9 +43,16 @@
 
             <Button
                 Grid.Column="2"
+                Text="History"
+                FontSize="12"
+                Padding="8,6"
+                Command="{Binding OpenHistoryCommand}" />
+
+            <Button
+                Grid.Column="3"
                 Text="Settings"
-                FontSize="13"
-                Padding="12,6"
+                FontSize="12"
+                Padding="8,6"
                 Command="{Binding OpenSettingsCommand}" />
         </Grid>
 

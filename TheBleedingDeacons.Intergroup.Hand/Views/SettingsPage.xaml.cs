@@ -22,19 +22,28 @@ public partial class SettingsPage : ContentPage
 	/// and an answer cached at construction would still say it cannot.</para>
 	/// </summary>
 	/// <summary>
-	/// Open the history. Navigation rather than a command because that is
-	/// all it is; the view model has nothing to say about it.
+	/// A text field has been finished with, so store what is in it.
+	///
+	/// <para><b>On leaving rather than on every keystroke.</b> The
+	/// address and the poll interval are read by the alert loop, which is
+	/// restarted whenever they change — saving per character would restart
+	/// it once per letter and would briefly store half a URL as the server
+	/// to reach.</para>
 	/// </summary>
-	private async void OnHistoryClicked(object? sender, EventArgs e)
+	private void OnFieldCommitted(object? sender, EventArgs e) => _ = _viewModel.ApplyAsync();
+
+	/// <summary>
+	/// Store anything typed and never left.
+	///
+	/// <para>A responder can type into a field and press Back without it
+	/// ever losing focus, and with no Save button that keystroke would
+	/// otherwise be the one thing on the page that did not stick.</para>
+	/// </summary>
+	protected override void OnDisappearing()
 	{
-		try
-		{
-			await Shell.Current.GoToAsync("history");
-		}
-		catch (Exception ex)
-		{
-			Serilog.Log.Warning(ex, "The history page could not be opened");
-		}
+		base.OnDisappearing();
+
+		_ = _viewModel.ApplyAsync();
 	}
 
 	protected override void OnAppearing()
