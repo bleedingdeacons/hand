@@ -77,12 +77,20 @@ public sealed partial class ComposeViewModel : ObservableObject
 	public partial string Status { get; set; } = string.Empty;
 
 	/// <summary>
-	/// How loud it will be. Defaults to yellow — audible but not an
-	/// emergency, which is the honest answer for a message somebody typed
-	/// rather than an alarm a system raised.
+	/// How loud it will be.
+	///
+	/// <para><b>Blue by default, which is quieter than the API's own
+	/// default of yellow.</b> That difference is deliberate: a plugin
+	/// raises an alert because something happened, and a responder typing
+	/// a message on a phone is usually passing on information. Starting
+	/// at the level that wakes nobody means the loud ones are chosen on
+	/// purpose rather than arrived at by leaving a control alone.</para>
+	///
+	/// <para>Sent explicitly on every send, so the server's default never
+	/// applies here.</para>
 	/// </summary>
 	[ObservableProperty]
-	public partial string Level { get; set; } = HandAlert.LevelYellow;
+	public partial string Level { get; set; } = HandAlert.LevelBlue;
 
 	/// <summary>
 	/// Whether somebody has to take this on.
