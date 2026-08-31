@@ -57,24 +57,31 @@
                 Placeholder="Optional" />
 
             <Label Text="Level" FontAttributes="Bold" />
+            <!--
+                Bound to three plain booleans rather than to Level through
+                an equality converter. Same reasoning as the committee
+                indent below: a converter that does not exist is a runtime
+                crash the build does not catch, and three properties cost
+                nothing.
+            -->
             <VerticalStackLayout Spacing="6">
                 <RadioButton
                     Content="{Binding LevelRedLabel}"
                     Value="red"
                     GroupName="level"
-                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=red, Mode=OneWay}"
+                    IsChecked="{Binding IsLevelRed, Mode=OneWay}"
                     CheckedChanged="OnLevelChecked" />
                 <RadioButton
                     Content="{Binding LevelYellowLabel}"
                     Value="yellow"
                     GroupName="level"
-                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=yellow, Mode=OneWay}"
+                    IsChecked="{Binding IsLevelYellow, Mode=OneWay}"
                     CheckedChanged="OnLevelChecked" />
                 <RadioButton
                     Content="{Binding LevelBlueLabel}"
                     Value="blue"
                     GroupName="level"
-                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=blue, Mode=OneWay}"
+                    IsChecked="{Binding IsLevelBlue, Mode=OneWay}"
                     CheckedChanged="OnLevelChecked" />
             </VerticalStackLayout>
 
@@ -152,10 +159,26 @@
                 IsVisible="{Binding IsCommitteeMode}">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="models:HandCommittee">
-                        <!-- Indented by depth rather than by dashes in the
-                             name, so the tree reads as a tree. -->
+                        <!--
+                            Indented by depth rather than by dashes in the
+                            name, so the tree reads as a tree.
+
+                            The indent is a transparent spacer rather than
+                            a bound Margin, because binding a double to a
+                            Thickness needs a converter and the toolkit
+                            has none — an invented one compiled happily
+                            and then took the page down at runtime with
+                            "MarkupExtension not found". A BoxView needs
+                            nothing that has to exist.
+                        -->
                         <VerticalStackLayout Padding="12,10" Spacing="2">
-                            <Label Text="{Binding Name}" FontSize="16" Margin="{Binding Indent, Converter={toolkit:DoubleToThicknessConverter}}" />
+                            <HorizontalStackLayout>
+                                <BoxView
+                                    WidthRequest="{Binding Indent}"
+                                    HeightRequest="1"
+                                    Color="Transparent" />
+                                <Label Text="{Binding Name}" FontSize="16" />
+                            </HorizontalStackLayout>
                             <Label Text="{Binding HandsetsLine}" FontSize="12" Opacity="0.6" />
                         </VerticalStackLayout>
                     </DataTemplate>

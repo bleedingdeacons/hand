@@ -19,19 +19,14 @@
     -->
 
     <!--
-        New message is a toolbar item rather than a fifth button on the
-        status line, which the comment below says is already as tight as
-        it goes. It also belongs there on the merits: everything on this
-        screen answers alerts, and this is the one thing that starts one.
+        <b>Not a ToolbarItem.</b> This screen sets
+        Shell.NavBarIsVisible="False" in AppShell, so there is no bar for
+        one to appear in — a toolbar item here renders nowhere at all and
+        the compose screen becomes unreachable. It looked right in the
+        XAML and was invisible on the handset.
     -->
-    <ContentPage.ToolbarItems>
-        <ToolbarItem
-            Text="New message"
-            Order="Secondary"
-            Command="{Binding ComposeCommand}" />
-    </ContentPage.ToolbarItems>
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="0">
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Padding="0">
 
         <!-- Status bar: who is on duty, and whether anything is waiting. -->
         <!--
@@ -266,8 +261,27 @@
             sit on the settings page directly above Sign out, which is why
             it is not there any more.
         -->
+        <!--
+            The one thing on this screen that starts an alert rather than
+            answering one, so it sits at the base with Hide rather than in
+            the status line — which its own comment says is already as
+            tight as it goes.
+
+            Hidden when the server has no compose routes. That is feature
+            discovery, not a permission: every enrolled handset may send.
+            See DeviceSession.CanSend.
+        -->
         <Button
             Grid.Row="3"
+            Text="New message"
+            Margin="12,12,12,0"
+            HeightRequest="48"
+            FontSize="14"
+            IsVisible="{Binding CanSend}"
+            Command="{Binding ComposeCommand}" />
+
+        <Button
+            Grid.Row="4"
             Text="Hide"
             Margin="12"
             HeightRequest="48"
