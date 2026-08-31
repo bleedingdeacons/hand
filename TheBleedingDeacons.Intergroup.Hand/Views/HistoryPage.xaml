@@ -91,6 +91,26 @@
                                 Opacity="0.6"
                                 IsVisible="{Binding IsExpanded}" />
 
+                            <!--
+                                Behind the tap, with the body, rather than
+                                on every closed row: this page is a list to
+                                skim, and a button on all thirty rows would
+                                undo that. It is here at all because an
+                                alert somebody else answered has no card
+                                left anywhere — this is the only place it
+                                can be replied to from.
+                            -->
+                            <Button
+                                Text="Reply"
+                                Margin="0,8,0,0"
+                                HeightRequest="40"
+                                FontSize="14"
+                                HorizontalOptions="Start"
+                                IsVisible="{Binding IsExpanded}"
+                                IsEnabled="{Binding CanReply}"
+                                Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:HistoryPage}"
+                                CommandParameter="{Binding .}" />
+
                         </VerticalStackLayout>
                     </Grid>
 

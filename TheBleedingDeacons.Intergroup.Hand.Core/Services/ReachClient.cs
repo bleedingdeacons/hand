@@ -189,6 +189,94 @@ public sealed class ReachClient : IReachClient
 		return Collapse(result);
 	}
 
+	public async Task<ReachResult<IReadOnlyList<HandMember>>> GetMembersAsync(
+		string token, string search, int page, CancellationToken cancellationToken)
+	{
+		var query = $"members?page={Math.Max(1, page)}";
+		if (!string.IsNullOrWhiteSpace(search))
+		{
+			query += $"&search={Uri.EscapeDataString(search)}";
+		}
+
+		var result = await SendAsync<MembersResponse>(
+			HttpMethod.Get, query, body: null, token, cancellationToken).ConfigureAwait(false);
+
+		return result.Success && result.Value is not null
+			? ReachResult<IReadOnlyList<HandMember>>.Ok(result.Value.Members)
+			: ReachResult<IReadOnlyList<HandMember>>.Fail(result.Failure, result.Message);
+	}
+
+	public async Task<ReachResult<IReadOnlyList<HandCommittee>>> GetCommitteesAsync(
+		string token, CancellationToken cancellationToken)
+	{
+		var result = await SendAsync<CommitteesResponse>(
+			HttpMethod.Get, "committees", body: null, token, cancellationToken).ConfigureAwait(false);
+
+		return result.Success && result.Value is not null
+			? ReachResult<IReadOnlyList<HandCommittee>>.Ok(result.Value.Committees)
+			: ReachResult<IReadOnlyList<HandCommittee>>.Fail(result.Failure, result.Message);
+	}
+
+	public async Task<ReachResult<bool>> SendAlertAsync(
+		string token,
+		string subject,
+		string body,
+		string level,
+		string response,
+		long memberId,
+		string committeeSlug,
+		CancellationToken cancellationToken)
+	{
+		var form = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["subject"] = subject,
+			["body"] = body,
+			["level"] = level,
+			["response"] = response,
+		};
+
+		// Exactly one recipient field is sent. Sending both empty would be
+		// refused as "choose one" rather than treated as a broadcast, and
+		// sending both filled is refused too — see IReachClient.
+		if (memberId > 0)
+		{
+			form["member_id"] = memberId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+		}
+		else if (committeeSlug.Length > 0)
+		{
+			form["committee"] = committeeSlug;
+		}
+
+		var result = await PostAsync<JsonElement>("alerts", form, token, cancellationToken)
+			.ConfigureAwait(false);
+
+		return Collapse(result);
+	}
+
+	public async Task<ReachResult<bool>> ReplyAsync(
+		string token, long alertId, string body, CancellationToken cancellationToken)
+	{
+		var result = await PostAsync<JsonElement>(
+			$"alerts/{alertId}/reply",
+			new Dictionary<string, string>(StringComparer.Ordinal) { ["body"] = body },
+			token,
+			cancellationToken).ConfigureAwait(false);
+
+		return Collapse(result);
+	}
+
+	public async Task<ReachResult<bool>> ResendAsync(
+		string token, long alertId, CancellationToken cancellationToken)
+	{
+		var result = await PostAsync<JsonElement>(
+			$"alerts/{alertId}/resend",
+			new Dictionary<string, string>(StringComparer.Ordinal),
+			token,
+			cancellationToken).ConfigureAwait(false);
+
+		return Collapse(result);
+	}
+
 	public async Task<ReachResult<string>> GetContactAsync(
 		string token, long alertId, CancellationToken cancellationToken)
 	{
@@ -373,6 +461,24 @@ public sealed class ReachClient : IReachClient
 
 		[JsonPropertyName("contact")]
 		public string Contact { get; set; } = string.Empty;
+	}
+
+	private sealed class MembersResponse
+	{
+		[JsonPropertyName("members")]
+		public List<HandMember> Members { get; set; } = [];
+
+		[JsonPropertyName("page")]
+		public int Page { get; set; }
+
+		[JsonPropertyName("total")]
+		public int Total { get; set; }
+	}
+
+	private sealed class CommitteesResponse
+	{
+		[JsonPropertyName("committees")]
+		public List<HandCommittee> Committees { get; set; } = [];
 	}
 
 	private sealed class WordPressError

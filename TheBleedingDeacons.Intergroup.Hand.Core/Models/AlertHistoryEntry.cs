@@ -106,8 +106,27 @@ public partial class AlertHistoryEntry : ObservableObject
 		AlertHistoryStatus.Expired => "Expired unanswered",
 		AlertHistoryStatus.Answered =>
 			AnsweredBy.Length > 0 ? $"Answered by {AnsweredBy}" : "Answered by another responder",
+		AlertHistoryStatus.PassedOn => "Passed back to the rota",
 		_ => "Outstanding",
 	};
+
+	/// <summary>
+	/// Whether this entry can still be replied to.
+	///
+	/// <para><b>An answered alert can, and that is the whole point of
+	/// offering reply from the history at all.</b> When somebody else
+	/// takes a job, Reach stops serving the message and Hand removes every
+	/// card — so the history row is the only place left to say anything
+	/// about it. Reach authorises a reply on whether the alert could have
+	/// been sent here, never on who answered, so it lands.</para>
+	///
+	/// <para>Expired is the exception: Reach purges an alert a day after
+	/// its window shuts, and a reply to something that long dead is
+	/// refused server-side anyway. Offering a button that answers 404 is
+	/// worse than not offering one.</para>
+	/// </summary>
+	[JsonIgnore]
+	public bool CanReply => !string.Equals(Status, AlertHistoryStatus.Expired, StringComparison.Ordinal);
 
 	/// <summary>
 	/// The row's colour, from the level. Deliberately the same three
@@ -127,9 +146,18 @@ public partial class AlertHistoryEntry : ObservableObject
 	[JsonIgnore]
 	public string LevelForeground => "#FFFFFF";
 
-	/// <summary>Whether there is anything to reveal by opening the row.</summary>
+	/// <summary>
+	/// Whether there is anything to reveal by opening the row.
+	///
+	/// <para><b>A row that can be replied to counts, even with no body.</b>
+	/// The Reply button lives in the expanded half, so without this an
+	/// alert that was only ever a subject line — which plenty are — would
+	/// be a row that refuses to open and therefore cannot be answered.
+	/// That is precisely the alert somebody else answered first, which is
+	/// the case this button exists for.</para>
+	/// </summary>
 	[JsonIgnore]
-	public bool HasDetail => Body.Length > 0 || Reference.Length > 0;
+	public bool HasDetail => Body.Length > 0 || Reference.Length > 0 || CanReply;
 
 	/// <summary>Build an entry from an alert as it arrives.</summary>
 	public static AlertHistoryEntry From(HandAlert alert, long receivedAt)
@@ -176,4 +204,15 @@ public static class AlertHistoryStatus
 
 	/// <summary>Its window shut with nothing done about it.</summary>
 	public const string Expired = "expired";
+
+	/// <summary>
+	/// This handset took it on and then put it back out to the rota.
+	///
+	/// <para>Distinct from <see cref="Closed"/> on purpose: closing means
+	/// the responder finished with it, and this means somebody else now
+	/// has to. The morning-after question "what happened to that 2am
+	/// callback" has different answers, and a history that collapsed them
+	/// would say the wrong one.</para>
+	/// </summary>
+	public const string PassedOn = "passed_on";
 }

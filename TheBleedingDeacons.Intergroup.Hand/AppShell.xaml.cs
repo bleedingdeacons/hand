@@ -17,5 +17,10 @@ public partial class AppShell : Shell
 		// It is emphatically not a place a duty handset should be left
 		// sitting — the alerts page is.
 		Routing.RegisterRoute("history", typeof(HistoryPage));
+
+		// Writing a message. Pushed for the same reason as the other two,
+		// and more so: a half-typed message left on screen is a handset
+		// that is not showing the alert it just received.
+		Routing.RegisterRoute("compose", typeof(ComposePage));
 	}
 }

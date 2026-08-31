@@ -184,10 +184,24 @@ public sealed class AlertHistory : IAlertHistory
 	/// notice arrived from their own other handset, was still answered
 	/// here — and a row that changed its mind about what happened would be
 	/// worse than no row.</para>
+	///
+	/// <para><b>One exception: acknowledged then passed on.</b> That is
+	/// not a row changing its mind, it is a second thing genuinely
+	/// happening afterwards — a responder took the job and then gave it
+	/// back, which they can only do having taken it. Refusing it would
+	/// leave the history saying they still have a call somebody else is
+	/// now handling, which is the one wrong answer this page must not
+	/// give. Narrow on purpose: only this transition, and only into
+	/// <see cref="AlertHistoryStatus.PassedOn"/>.</para>
 	/// </summary>
 	private static bool Apply(AlertHistoryEntry entry, string status, long settledAt, string answeredBy)
 	{
-		if (!string.Equals(entry.Status, AlertHistoryStatus.Outstanding, StringComparison.Ordinal))
+		var passingOnAJobTakenHere =
+			string.Equals(status, AlertHistoryStatus.PassedOn, StringComparison.Ordinal)
+			&& string.Equals(entry.Status, AlertHistoryStatus.Acknowledged, StringComparison.Ordinal);
+
+		if (!string.Equals(entry.Status, AlertHistoryStatus.Outstanding, StringComparison.Ordinal)
+			&& !passingOnAJobTakenHere)
 		{
 			return false;
 		}

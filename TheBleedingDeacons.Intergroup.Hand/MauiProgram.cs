@@ -174,6 +174,12 @@ public static class MauiProgram
 		builder.Services.AddTransient<HistoryPage>();
 		builder.Services.AddTransient<HistoryViewModel>();
 
+		// Transient, like every view-model but the alerts one: a compose
+		// screen holds a half-typed message and a loaded directory, and
+		// neither should survive being navigated away from.
+		builder.Services.AddTransient<ComposePage>();
+		builder.Services.AddTransient<ComposeViewModel>();
+
 #if DEBUG
 		builder.Services.AddLogging();
 		builder.Logging.AddDebug();

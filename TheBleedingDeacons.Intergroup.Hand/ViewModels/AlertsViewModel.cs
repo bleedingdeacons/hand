@@ -117,6 +117,104 @@ public sealed partial class AlertsViewModel : ObservableObject
 		await _alerts.ShowContactAsync(alert).ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// Say something back about an alert.
+	///
+	/// <para>The prompt is raised here rather than in the page because
+	/// every other command on this screen is, and a reply is one step:
+	/// there is no half-filled state worth a page of its own.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task ReplyAsync(HandAlert? alert)
+	{
+		if (alert is null)
+		{
+			return;
+		}
+
+		try
+		{
+			var body = await Shell.Current.DisplayPromptAsync(
+				"Reply",
+				"This goes to whoever sent it, and onto a lock screen. No names or numbers.",
+				accept: "Send",
+				cancel: "Cancel",
+				maxLength: 1000);
+
+			if (!string.IsNullOrWhiteSpace(body))
+			{
+				await _alerts.ReplyAsync(alert.Id, body).ConfigureAwait(false);
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "The reply could not be sent");
+		}
+	}
+
+	/// <summary>
+	/// Put a job back to the rota.
+	///
+	/// <para>Confirmed, because it rings phones — the responder is asking
+	/// for a handful of alarms to go off, and a mis-tap on a card they
+	/// were reaching past should not do that. Disabled while it runs so a
+	/// double tap cannot raise two.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task PassBackAsync(HandAlert? alert)
+	{
+		if (alert is null || IsPassingBack)
+		{
+			return;
+		}
+
+		try
+		{
+			var confirmed = await Shell.Current.DisplayAlertAsync(
+				"Pass this back?",
+				"It goes out again to everybody it came to, and their handsets will ring. You will no longer have it.",
+				"Pass back",
+				"Keep it");
+
+			if (!confirmed)
+			{
+				return;
+			}
+
+			IsPassingBack = true;
+			await _alerts.ResendAsync(alert).ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "The alert could not be passed back");
+		}
+		finally
+		{
+			IsPassingBack = false;
+		}
+	}
+
+	[ObservableProperty]
+	public partial bool IsPassingBack { get; set; }
+
+	/// <summary>
+	/// Whether to offer the compose screen.
+	///
+	/// <para>Answers what the <em>server</em> supports, not what this
+	/// responder may do — every enrolled handset may send. A Reach without
+	/// these routes says nothing, which reads as false, so the button is
+	/// absent rather than answering 404. See
+	/// <see cref="DeviceSession.CanSend"/>.</para>
+	/// </summary>
+	public bool CanSend => _auth.Current?.CanSend ?? false;
+
+	/// <summary>Write a message to a member or a committee.</summary>
+	[RelayCommand]
+	private static async Task ComposeAsync()
+	{
+		await Shell.Current.GoToAsync("compose").ConfigureAwait(false);
+	}
+
 	[RelayCommand]
 	private async Task AcknowledgeAllAsync()
 	{
@@ -195,5 +293,10 @@ public sealed partial class AlertsViewModel : ObservableObject
 		OnPropertyChanged(nameof(StatusLine));
 		OnPropertyChanged(nameof(HasAlerts));
 		OnPropertyChanged(nameof(IsClear));
+
+		// The session is re-checked at launch and after a sign-in, so what
+		// the server says it supports can have changed while this page was
+		// off screen.
+		OnPropertyChanged(nameof(CanSend));
 	}
 }
