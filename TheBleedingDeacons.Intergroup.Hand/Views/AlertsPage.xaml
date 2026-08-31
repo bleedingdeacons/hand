@@ -18,6 +18,19 @@
         phone from two metres away in the dark.
     -->
 
+    <!--
+        New message is a toolbar item rather than a fifth button on the
+        status line, which the comment below says is already as tight as
+        it goes. It also belongs there on the merits: everything on this
+        screen answers alerts, and this is the one thing that starts one.
+    -->
+    <ContentPage.ToolbarItems>
+        <ToolbarItem
+            Text="New message"
+            Order="Secondary"
+            Command="{Binding ComposeCommand}" />
+    </ContentPage.ToolbarItems>
+
     <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="0">
 
         <!-- Status bar: who is on duty, and whether anything is waiting. -->
@@ -184,6 +197,44 @@
                                     FontAttributes="Bold"
                                     HeightRequest="52"
                                     Command="{Binding ViewModel.AcknowledgeCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
+                                    CommandParameter="{Binding .}" />
+
+                                <!--
+                                    Reply is offered on every card, and
+                                    also from the history — which is the
+                                    case that matters. When somebody else
+                                    answers, Reach stops serving the
+                                    message and this card is removed, so
+                                    the history row is the only way left
+                                    to say anything about it.
+                                -->
+                                <Button
+                                    Text="Reply"
+                                    BackgroundColor="Transparent"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
+                                    BorderWidth="1"
+                                    HeightRequest="44"
+                                    Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
+                                    CommandParameter="{Binding .}" />
+
+                                <!--
+                                    Only on a job this handset has taken
+                                    on. Passing back an alert nobody
+                                    accepted would be putting out something
+                                    that is still out; see
+                                    AlertController::resend(), which
+                                    refuses exactly that.
+                                -->
+                                <Button
+                                    Text="Pass back to the rota"
+                                    BackgroundColor="Transparent"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
+                                    BorderWidth="1"
+                                    HeightRequest="44"
+                                    IsVisible="{Binding AcknowledgedHere}"
+                                    Command="{Binding ViewModel.PassBackCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
                                     CommandParameter="{Binding .}" />
                             </VerticalStackLayout>
                         </Border>

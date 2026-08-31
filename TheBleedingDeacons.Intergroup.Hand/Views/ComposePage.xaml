@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="TheBleedingDeacons.Intergroup.Hand.Views.ComposePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:TheBleedingDeacons.Intergroup.Hand.Models;assembly=TheBleedingDeacons.Intergroup.Hand.Core"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:views="clr-namespace:TheBleedingDeacons.Intergroup.Hand.Views"
+    xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
+    x:Name="Page"
+    x:DataType="vm:ComposeViewModel"
+    Title="New message">
+
+    <!--
+        Writing rather than answering, so the opposite of the duty screen's
+        loudness: an ordinary form, ordinary colours, nothing shouting.
+
+        The order is the order of the decision. What to say, then how
+        loudly, then who to. The recipient is last because it is the field
+        somebody scrolls a list for, and putting it first would mean
+        scrolling back up to type.
+    -->
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+
+            <!--
+                The same warning wp-admin's Send Message screen carries,
+                and it is not boilerplate. This text goes where an alert
+                goes: through Google's servers and onto a lock screen
+                anyone standing nearby can read.
+            -->
+            <Border
+                Padding="12"
+                BackgroundColor="#FFF4E5"
+                StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="10" />
+                </Border.StrokeShape>
+                <Label
+                    FontSize="13"
+                    TextColor="#5C4400"
+                    Text="Whatever you type reaches a lock screen. Keep callers' names and numbers out of it — say what happened and give a reference." />
+            </Border>
+
+            <Label Text="Subject" FontAttributes="Bold" />
+            <Entry
+                Text="{Binding Subject}"
+                MaxLength="200"
+                Placeholder="The line they read first" />
+
+            <Label Text="Message" FontAttributes="Bold" />
+            <Editor
+                Text="{Binding Body}"
+                MaxLength="1000"
+                HeightRequest="100"
+                Placeholder="Optional" />
+
+            <Label Text="Level" FontAttributes="Bold" />
+            <VerticalStackLayout Spacing="6">
+                <RadioButton
+                    Content="{Binding LevelRedLabel}"
+                    Value="red"
+                    GroupName="level"
+                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=red, Mode=OneWay}"
+                    CheckedChanged="OnLevelChecked" />
+                <RadioButton
+                    Content="{Binding LevelYellowLabel}"
+                    Value="yellow"
+                    GroupName="level"
+                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=yellow, Mode=OneWay}"
+                    CheckedChanged="OnLevelChecked" />
+                <RadioButton
+                    Content="{Binding LevelBlueLabel}"
+                    Value="blue"
+                    GroupName="level"
+                    IsChecked="{Binding Level, Converter={toolkit:IsEqualConverter}, ConverterParameter=blue, Mode=OneWay}"
+                    CheckedChanged="OnLevelChecked" />
+            </VerticalStackLayout>
+
+            <!--
+                Unticked means information: everybody reads it and closes
+                their own copy. Ticked makes it somebody's job, so the
+                first to acknowledge takes it and it clears off the rest.
+            -->
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Switch Grid.Column="0" IsToggled="{Binding FirstToRespond}" VerticalOptions="Center" />
+                <Label
+                    Grid.Column="1"
+                    VerticalOptions="Center"
+                    FontSize="14"
+                    Text="Somebody has to take this on — the first to acknowledge deals with it" />
+            </Grid>
+
+            <Label Text="Send to" FontAttributes="Bold" />
+
+            <!--
+                Two scopes, and no third. There is no "everybody" on this
+                screen — see ComposeViewModel on why a broadcast is not
+                something a handset offers.
+            -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <RadioButton
+                    Grid.Column="0"
+                    Content="A member"
+                    GroupName="scope"
+                    IsChecked="{Binding IsMemberMode, Mode=OneWay}"
+                    CheckedChanged="OnMemberScopeChecked" />
+                <RadioButton
+                    Grid.Column="1"
+                    Content="A committee"
+                    GroupName="scope"
+                    IsChecked="{Binding IsCommitteeMode, Mode=OneWay}"
+                    CheckedChanged="OnCommitteeScopeChecked" />
+            </Grid>
+
+            <!-- Members -->
+            <VerticalStackLayout Spacing="8" IsVisible="{Binding IsMemberMode}">
+                <SearchBar
+                    Text="{Binding Search}"
+                    Placeholder="Search by name" />
+
+                <CollectionView
+                    ItemsSource="{Binding Members}"
+                    SelectedItem="{Binding SelectedMember}"
+                    SelectionMode="Single"
+                    HeightRequest="240">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:HandMember">
+                            <VerticalStackLayout Padding="12,10" Spacing="2">
+                                <!-- The anonymous name with the home group:
+                                     a rota has more than one Dave, and the
+                                     group is what tells them apart. -->
+                                <Label Text="{Binding Display}" FontSize="16" />
+                                <Label
+                                    Text="{Binding ReachabilityNote}"
+                                    FontSize="12"
+                                    Opacity="0.6"
+                                    IsVisible="{Binding ReachabilityNote, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </VerticalStackLayout>
+
+            <!-- Committees -->
+            <CollectionView
+                ItemsSource="{Binding Committees}"
+                SelectedItem="{Binding SelectedCommittee}"
+                SelectionMode="Single"
+                HeightRequest="240"
+                IsVisible="{Binding IsCommitteeMode}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:HandCommittee">
+                        <!-- Indented by depth rather than by dashes in the
+                             name, so the tree reads as a tree. -->
+                        <VerticalStackLayout Padding="12,10" Spacing="2">
+                            <Label Text="{Binding Name}" FontSize="16" Margin="{Binding Indent, Converter={toolkit:DoubleToThicknessConverter}}" />
+                            <Label Text="{Binding HandsetsLine}" FontSize="12" Opacity="0.6" />
+                        </VerticalStackLayout>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Label
+                Text="{Binding Status}"
+                TextColor="#B3261E"
+                FontSize="14"
+                IsVisible="{Binding Status, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
+
+            <Button
+                Text="Send"
+                HeightRequest="52"
+                Margin="0,4,0,0"
+                IsEnabled="{Binding CanSend}"
+                Command="{Binding SendCommand}" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

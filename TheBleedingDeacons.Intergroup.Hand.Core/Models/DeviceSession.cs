@@ -48,6 +48,25 @@ public class DeviceSession
 
 	[JsonPropertyName("authorised")]
 	public bool Authorised { get; set; }
+
+	/// <summary>
+	/// Whether this handset can raise a message, reply to one, or pass a
+	/// job back.
+	///
+	/// <para><b>Feature discovery, not a permission.</b> Every enrolled
+	/// handset may send — Reach has no capability to consult, because
+	/// there is no WordPress user behind a device token, and a handset
+	/// exists only because the responder gate passed. What this reports
+	/// is whether the <em>server</em> has those routes at all.</para>
+	///
+	/// <para>It defaults to false, which is the important half. Hand
+	/// updates itself and the site it talks to does not, so the ordinary
+	/// case is a handset newer than its Reach — and a compose button that
+	/// answers 404 is worse than no compose button. An older server says
+	/// nothing here and gets the safe answer.</para>
+	/// </summary>
+	[JsonPropertyName("can_send")]
+	public bool CanSend { get; set; }
 }
 
 /// <summary>

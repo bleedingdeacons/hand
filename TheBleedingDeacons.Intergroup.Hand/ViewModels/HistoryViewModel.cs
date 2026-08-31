@@ -18,10 +18,12 @@ namespace TheBleedingDeacons.Intergroup.Hand.ViewModels;
 public sealed partial class HistoryViewModel : ObservableObject
 {
 	private readonly IAlertHistory _history;
+	private readonly IAlertService _alerts;
 
-	public HistoryViewModel(IAlertHistory history)
+	public HistoryViewModel(IAlertHistory history, IAlertService alerts)
 	{
 		_history = history ?? throw new ArgumentNullException(nameof(history));
+		_alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
 	}
 
 	public ObservableCollection<AlertHistoryEntry> Entries => _history.Entries;
@@ -77,6 +79,49 @@ public sealed partial class HistoryViewModel : ObservableObject
 		await _history.ClearAsync().ConfigureAwait(false);
 
 		OnPropertyChanged(nameof(HasEntries));
+	}
+
+	/// <summary>
+	/// Say something about an alert after the fact.
+	///
+	/// <para><b>This is the whole reason reply lives on the history page
+	/// as well as the duty screen.</b> When another responder answers a
+	/// job first, Reach stops serving that message and Hand removes every
+	/// card — so from that moment the row here is the only thing left to
+	/// reply from. Reach authorises a reply on whether the alert could
+	/// have been sent to this handset, never on who answered it, so it
+	/// lands.</para>
+	///
+	/// <para>Replying changes nothing about the entry. It is not a second
+	/// person taking the job on, and the row goes on saying what actually
+	/// became of it.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task ReplyAsync(AlertHistoryEntry? entry)
+	{
+		if (entry is null || !entry.CanReply)
+		{
+			return;
+		}
+
+		try
+		{
+			var body = await Shell.Current.DisplayPromptAsync(
+				"Reply",
+				"This goes to whoever sent it, and onto a lock screen. No names or numbers.",
+				accept: "Send",
+				cancel: "Cancel",
+				maxLength: 1000);
+
+			if (!string.IsNullOrWhiteSpace(body))
+			{
+				await _alerts.ReplyAsync(entry.Id, body).ConfigureAwait(false);
+			}
+		}
+		catch (Exception ex)
+		{
+			Serilog.Log.Error(ex, "The reply could not be sent");
+		}
 	}
 
 	private void OnEntriesChanged(object? sender, EventArgs e) =>

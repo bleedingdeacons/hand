@@ -265,6 +265,68 @@ internal sealed class FakeReachClient : IReachClient
 		UnreadableReports++;
 		return Task.FromResult(ReachResult<bool>.Ok(true));
 	}
+
+	public ReachResult<IReadOnlyList<HandMember>> Members { get; set; } =
+		ReachResult<IReadOnlyList<HandMember>>.Ok([]);
+
+	public ReachResult<IReadOnlyList<HandCommittee>> Committees { get; set; } =
+		ReachResult<IReadOnlyList<HandCommittee>>.Ok([]);
+
+	public ReachResult<bool> ReplyResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	public ReachResult<bool> ResendResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	public ReachResult<bool> SendResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	/// <summary>Alert id and body of every reply sent, in order.</summary>
+	public List<(long AlertId, string Body)> Replies { get; } = [];
+
+	/// <summary>The alerts passed back to the rota, in order.</summary>
+	public List<long> Resent { get; } = [];
+
+	/// <summary>The last search term the member directory was asked for.</summary>
+	public string LastSearch { get; private set; } = string.Empty;
+
+	public Task<ReachResult<IReadOnlyList<HandMember>>> GetMembersAsync(
+		string token, string search, int page, CancellationToken cancellationToken)
+	{
+		LastSearch = search;
+		return Task.FromResult(Members);
+	}
+
+	public Task<ReachResult<IReadOnlyList<HandCommittee>>> GetCommitteesAsync(
+		string token, CancellationToken cancellationToken) =>
+		Task.FromResult(Committees);
+
+	public Task<ReachResult<bool>> SendAlertAsync(
+		string token,
+		string subject,
+		string body,
+		string level,
+		string response,
+		long memberId,
+		string committeeSlug,
+		CancellationToken cancellationToken)
+	{
+		Sent.Add((subject, body, level, response, memberId, committeeSlug));
+		return Task.FromResult(SendResult);
+	}
+
+	/// <summary>Everything raised from this handset, in order.</summary>
+	public List<(string Subject, string Body, string Level, string Response, long MemberId, string Committee)> Sent { get; } = [];
+
+	public Task<ReachResult<bool>> ReplyAsync(
+		string token, long alertId, string body, CancellationToken cancellationToken)
+	{
+		Replies.Add((alertId, body));
+		return Task.FromResult(ReplyResult);
+	}
+
+	public Task<ReachResult<bool>> ResendAsync(string token, long alertId, CancellationToken cancellationToken)
+	{
+		Resent.Add(alertId);
+		return Task.FromResult(ResendResult);
+	}
 }
 
 /// <summary>

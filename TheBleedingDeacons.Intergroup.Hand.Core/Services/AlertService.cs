@@ -252,6 +252,81 @@ public sealed class AlertService : IAlertService, IDisposable
 		}
 	}
 
+	public async Task<bool> ReplyAsync(long alertId, string body)
+	{
+		if (string.IsNullOrWhiteSpace(body))
+		{
+			return false;
+		}
+
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			return false;
+		}
+
+		var result = await _reach
+			.ReplyAsync(token, alertId, body.Trim(), CancellationToken.None)
+			.ConfigureAwait(false);
+
+		if (!result.Success)
+		{
+			Log.Warning(
+				"Reply to alert {AlertId} was refused: {Failure} {Message}",
+				alertId, result.Failure, result.Message);
+
+			await HandleFailureAsync(result.Failure).ConfigureAwait(false);
+			return false;
+		}
+
+		// Deliberately settles nothing. A reply is not a second person
+		// taking the job on, so an alert still outstanding stays
+		// outstanding and its Acknowledge button stays where it was.
+		Log.Information("Replied to alert {AlertId}", alertId);
+
+		return true;
+	}
+
+	public async Task<bool> ResendAsync(HandAlert alert)
+	{
+		ArgumentNullException.ThrowIfNull(alert);
+
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			return false;
+		}
+
+		var result = await _reach
+			.ResendAsync(token, alert.Id, CancellationToken.None)
+			.ConfigureAwait(false);
+
+		if (!result.Success)
+		{
+			Log.Warning(
+				"Alert {AlertId} could not be passed back: {Failure} {Message}",
+				alert.Id, result.Failure, result.Message);
+
+			await HandleFailureAsync(result.Failure).ConfigureAwait(false);
+			return false;
+		}
+
+		// The job has gone back to the rota, so it is no longer this
+		// handset's — the card goes and the history says what became of
+		// it. Unlike a reply, this one really is finished here.
+		//
+		// Reach raised the new message with this handset excluded, so the
+		// next poll does not hand the same job straight back.
+		await RemoveAsync(alert.Id).ConfigureAwait(false);
+		await _history
+			.SettleAsync(alert.Id, AlertHistoryStatus.PassedOn, Now)
+			.ConfigureAwait(false);
+
+		Log.Information("Alert {AlertId} passed back to the rota", alert.Id);
+
+		return true;
+	}
+
 	public async Task ShowContactAsync(HandAlert alert)
 	{
 		ArgumentNullException.ThrowIfNull(alert);
