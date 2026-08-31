@@ -100,6 +100,22 @@ public sealed partial class ComposeViewModel : ObservableObject
 	public bool IsCommitteeMode => RecipientMode == 1;
 
 	/// <summary>
+	/// The level radios, as three booleans.
+	///
+	/// <para>Plain properties rather than an equality converter over
+	/// <see cref="Level"/>. A converter the toolkit does not ship compiles
+	/// perfectly and then fails at runtime with "MarkupExtension not
+	/// found", taking the whole page down the first time anybody opens
+	/// it — which is exactly what happened. These cannot fail that
+	/// way.</para>
+	/// </summary>
+	public bool IsLevelRed => string.Equals(Level, HandAlert.LevelRed, StringComparison.Ordinal);
+
+	public bool IsLevelYellow => string.Equals(Level, HandAlert.LevelYellow, StringComparison.Ordinal);
+
+	public bool IsLevelBlue => string.Equals(Level, HandAlert.LevelBlue, StringComparison.Ordinal);
+
+	/// <summary>
 	/// Whether Send should do anything: a subject, and a recipient that
 	/// can actually be reached.
 	///
@@ -173,6 +189,13 @@ public sealed partial class ComposeViewModel : ObservableObject
 	}
 
 	partial void OnSubjectChanged(string value) => OnPropertyChanged(nameof(CanSend));
+
+	partial void OnLevelChanged(string value)
+	{
+		OnPropertyChanged(nameof(IsLevelRed));
+		OnPropertyChanged(nameof(IsLevelYellow));
+		OnPropertyChanged(nameof(IsLevelBlue));
+	}
 
 	partial void OnSelectedMemberChanged(HandMember? value) => OnPropertyChanged(nameof(CanSend));
 
