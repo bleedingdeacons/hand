@@ -127,9 +127,18 @@ public partial class HandAlert : ObservableObject
 	///
 	/// <para>A flag, never the details. Those are personal data and stay
 	/// off the push and the poll entirely — see <see cref="Contact"/>.</para>
+	///
+	/// <para><b>Observable, because it can be corrected after the card is
+	/// on screen.</b> A push cannot always say whether a contact exists —
+	/// an older Reach omitted the flag entirely — so the poll copy that
+	/// arrives seconds later may know better, and
+	/// <see cref="Services.AlertService"/> promotes it. A plain property
+	/// would have been set without the button ever appearing, which is
+	/// the same bug wearing a different hat.</para>
 	/// </summary>
 	[JsonPropertyName("has_contact")]
-	public bool HasContact { get; set; }
+	[ObservableProperty]
+	public partial bool HasContact { get; set; }
 
 	/// <summary>
 	/// The contact details, once a responder has asked for them.

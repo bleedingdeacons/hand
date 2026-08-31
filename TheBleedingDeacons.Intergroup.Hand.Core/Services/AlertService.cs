@@ -527,9 +527,35 @@ public sealed class AlertService : IAlertService, IDisposable
 		bool admitted;
 		try
 		{
-			if (_handled.Contains(alert.Id) || Active.Any(a => a.Id == alert.Id))
+			var existing = Active.FirstOrDefault(a => a.Id == alert.Id);
+
+			if (_handled.Contains(alert.Id) || existing is not null)
 			{
 				admitted = false;
+
+				// <b>A duplicate is not always identical, and the one
+				// field that differs is the one that matters.</b> The push
+				// cannot carry contact details and older servers did not
+				// even carry the flag saying they exist, so an alert
+				// admitted from a push can say it has none while the poll
+				// copy arriving seconds later knows better. Discarding
+				// that outright left Show contact permanently absent on
+				// exactly the handsets push works on.
+				//
+				// Promoted in one direction only. The poll joins the
+				// contacts table and is authoritative that a contact
+				// exists; nothing here should be able to take one away,
+				// because a push that simply omitted the flag would then
+				// erase a button the responder can already see.
+				if (existing is { HasContact: false } && alert.HasContact)
+				{
+					await _dispatcher
+						.InvokeAsync(() => existing.HasContact = true)
+						.ConfigureAwait(false);
+
+					Log.Debug(
+						"Alert {AlertId} gained its contact flag from the poll", alert.Id);
+				}
 			}
 			else
 			{

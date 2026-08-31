@@ -256,6 +256,68 @@ public sealed class ComposeAndReplyTests
 		Assert.False(entry.HasDetail);
 	}
 
+	// ── The contact flag, corrected after the fact ────────────────────
+
+	/// <summary>
+	/// <b>A duplicate is not always identical.</b> A push cannot always
+	/// say whether contact details exist — an older Reach omitted the flag
+	/// entirely — so the poll copy arriving seconds later may know better.
+	/// Discarding it outright left <em>Show contact</em> permanently
+	/// absent on exactly the handsets push works on, which is most of
+	/// them.
+	/// </summary>
+	[Fact]
+	public async Task APolledCopyGivesAPushedAlertItsContactFlag()
+	{
+		using var service = Build();
+
+		// As it arrives by push, from a server that could not say.
+		var pushed = Alerts.New(7);
+		pushed.HasContact = false;
+		await service.HandlePushAsync(pushed);
+
+		Assert.False(service.Active[0].HasContact);
+
+		// And again on the poll, which joins the contacts table.
+		var polled = Alerts.New(7);
+		polled.HasContact = true;
+		await service.HandlePushAsync(polled);
+
+		Assert.Single(service.Active);
+		Assert.True(service.Active[0].HasContact);
+	}
+
+	/// <summary>
+	/// Promoted in one direction only. A push that simply omitted the flag
+	/// must not erase a button the responder can already see.
+	/// </summary>
+	[Fact]
+	public async Task ALaterCopySayingNothingDoesNotTakeTheContactAway()
+	{
+		using var service = Build();
+
+		var first = Alerts.New(7);
+		first.HasContact = true;
+		await service.HandlePushAsync(first);
+
+		var second = Alerts.New(7);
+		second.HasContact = false;
+		await service.HandlePushAsync(second);
+
+		Assert.True(service.Active[0].HasContact);
+	}
+
+	[Fact]
+	public async Task ADuplicateDoesNotAddASecondCard()
+	{
+		using var service = Build();
+
+		await service.HandlePushAsync(Alerts.New(7));
+		await service.HandlePushAsync(Alerts.New(7));
+
+		Assert.Single(service.Active);
+	}
+
 	// ── Feature discovery ─────────────────────────────────────────────
 
 	/// <summary>
