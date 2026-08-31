@@ -106,6 +106,19 @@ public partial class HandAlert : ObservableObject
 	public const string KindMessageAcknowledged = "message_acknowledged";
 
 	/// <summary>
+	/// A responder's reply, carried back to whoever raised the original.
+	///
+	/// <para>Like the acknowledgement notice it is quiet by its level and
+	/// response rather than by its kind, so nothing branches on this to
+	/// decide how loud it is. What the kind decides is that it cannot be
+	/// replied to — see <see cref="IsNotice"/>.</para>
+	///
+	/// <para>Matches <c>Alert::KIND_REPLY</c> in Reach; the two spellings
+	/// are a wire contract.</para>
+	/// </summary>
+	public const string KindMessageReply = "message_reply";
+
+	/// <summary>
 	/// Payload key naming the message a notice is about. Written by
 	/// <c>AcknowledgementNotifier::PAYLOAD_MESSAGE_UUID</c>.
 	/// </summary>
@@ -424,6 +437,33 @@ public partial class HandAlert : ObservableObject
 	/// </summary>
 	public bool IsAcknowledgementNotice =>
 		string.Equals(Kind, KindMessageAcknowledged, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether this is Reach talking about another alert rather than
+	/// something in its own right.
+	///
+	/// <para>Mirrors <c>Alert::isNotice()</c> on the server, which is the
+	/// authority — the reply route refuses both kinds outright.</para>
+	/// </summary>
+	public bool IsNotice =>
+		IsAcknowledgementNotice
+		|| string.Equals(Kind, KindMessageReply, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether this card should offer Reply.
+	///
+	/// <para><b>Not on a notice.</b> The server refuses a reply to one —
+	/// otherwise an answered call becomes an unbounded exchange between
+	/// two handsets — so offering the button anyway gave a responder
+	/// something that looked like it worked, took their words, and threw
+	/// them away against a 404. A button that cannot succeed is worse
+	/// than no button.</para>
+	///
+	/// <para>The alert a notice reports on is still repliable; it is
+	/// reached from the history, where it survives being cleared off the
+	/// screen. See <see cref="AlertHistoryEntry.CanReply"/>.</para>
+	/// </summary>
+	public bool CanReply => !IsNotice;
 
 	/// <summary>
 	/// Whether this may be shown without waking anybody: in the tray at

@@ -127,7 +127,11 @@ public sealed partial class AlertsViewModel : ObservableObject
 	[RelayCommand]
 	private async Task ReplyAsync(HandAlert? alert)
 	{
-		if (alert is null)
+		// The notice check is here as well as on the button, because the
+		// button being hidden is a rendering decision and this is the
+		// rule. The server refuses either way; not prompting for words it
+		// will throw away is the point.
+		if (alert is null || !alert.CanReply)
 		{
 			return;
 		}

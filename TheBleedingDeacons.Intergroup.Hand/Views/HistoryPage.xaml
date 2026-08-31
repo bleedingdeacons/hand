@@ -106,8 +106,7 @@
                                 HeightRequest="40"
                                 FontSize="14"
                                 HorizontalOptions="Start"
-                                IsVisible="{Binding IsExpanded}"
-                                IsEnabled="{Binding CanReply}"
+                                IsVisible="{Binding ShowReply}"
                                 Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:HistoryPage}"
                                 CommandParameter="{Binding .}" />
 

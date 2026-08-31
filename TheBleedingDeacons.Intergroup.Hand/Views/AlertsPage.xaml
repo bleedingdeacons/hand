@@ -195,13 +195,19 @@
                                     CommandParameter="{Binding .}" />
 
                                 <!--
-                                    Reply is offered on every card, and
-                                    also from the history — which is the
-                                    case that matters. When somebody else
+                                    Reply is offered on a card, and also
+                                    from the history — which is the case
+                                    that matters. When somebody else
                                     answers, Reach stops serving the
                                     message and this card is removed, so
                                     the history row is the only way left
                                     to say anything about it.
+
+                                    Not on a notice, though: the server
+                                    refuses a reply to one, so the button
+                                    would take a responder's words and
+                                    throw them away against a 404. See
+                                    HandAlert.CanReply.
                                 -->
                                 <Button
                                     Text="Reply"
@@ -210,6 +216,7 @@
                                     BorderColor="{Binding LevelForeground}"
                                     BorderWidth="1"
                                     HeightRequest="44"
+                                    IsVisible="{Binding CanReply}"
                                     Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
                                     CommandParameter="{Binding .}" />
 

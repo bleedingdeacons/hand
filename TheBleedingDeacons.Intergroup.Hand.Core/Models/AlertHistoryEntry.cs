@@ -48,6 +48,17 @@ public partial class AlertHistoryEntry : ObservableObject
 	public string Reference { get; set; } = string.Empty;
 
 	/// <summary>
+	/// What sort of thing this was, so the row knows whether it can be
+	/// replied to. See <see cref="CanReply"/>.
+	///
+	/// <para>Empty on rows written before this was stored, which reads as
+	/// "not a notice" and so offers Reply. That is the behaviour those
+	/// rows already had, and the server refuses the ones it should.</para>
+	/// </summary>
+	[JsonPropertyName("kind")]
+	public string Kind { get; set; } = string.Empty;
+
+	/// <summary>
 	/// The level it arrived at: red, yellow or blue. Shown as the row's
 	/// colour, so a night's history reads as a shape before it is read as
 	/// a list.
@@ -88,6 +99,20 @@ public partial class AlertHistoryEntry : ObservableObject
 	[ObservableProperty]
 	public partial bool IsExpanded { get; set; }
 
+	/// <summary>
+	/// Whether the Reply button is on screen: the row is open, and this
+	/// is something that can be replied to at all.
+	///
+	/// <para>A property rather than two bindings and a converter. The one
+	/// that would have been needed here does not exist in the toolkit,
+	/// and the last invented converter compiled cleanly and then took the
+	/// page down at runtime.</para>
+	/// </summary>
+	[JsonIgnore]
+	public bool ShowReply => IsExpanded && CanReply;
+
+	partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ShowReply));
+
 	/// <summary>The time this arrived, as the list shows it.</summary>
 	[JsonIgnore]
 	public string ReceivedLine =>
@@ -120,13 +145,27 @@ public partial class AlertHistoryEntry : ObservableObject
 	/// about it. Reach authorises a reply on whether the alert could have
 	/// been sent here, never on who answered, so it lands.</para>
 	///
-	/// <para>Expired is the exception: Reach purges an alert a day after
-	/// its window shuts, and a reply to something that long dead is
-	/// refused server-side anyway. Offering a button that answers 404 is
-	/// worse than not offering one.</para>
+	/// <para>Two exceptions, both for the same reason — the server would
+	/// refuse, and a button that answers 404 is worse than no button.
+	/// <b>Expired</b>, because Reach purges an alert a day after its
+	/// window shuts. And <b>a notice</b>: an acknowledgement notice or a
+	/// reply is Reach talking about another alert, and replying to one
+	/// would turn an answered call into an unbounded exchange. The alert
+	/// a notice reports on is repliable, and is its own row here.</para>
 	/// </summary>
 	[JsonIgnore]
-	public bool CanReply => !string.Equals(Status, AlertHistoryStatus.Expired, StringComparison.Ordinal);
+	public bool CanReply =>
+		!string.Equals(Status, AlertHistoryStatus.Expired, StringComparison.Ordinal)
+		&& !IsNotice;
+
+	/// <summary>
+	/// Whether this row records Reach talking about another alert.
+	/// Mirrors <see cref="HandAlert.IsNotice"/>.
+	/// </summary>
+	[JsonIgnore]
+	public bool IsNotice =>
+		string.Equals(Kind, HandAlert.KindMessageAcknowledged, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(Kind, HandAlert.KindMessageReply, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// The row's colour, from the level. Deliberately the same three
@@ -171,6 +210,7 @@ public partial class AlertHistoryEntry : ObservableObject
 			Subject = alert.Title,
 			Body = alert.Body,
 			Reference = alert.Reference,
+			Kind = alert.Kind,
 			Level = alert.LevelOrDerived,
 			// An informational alert was never anybody's to take on, so it
 			// is not "outstanding" in the sense the list means — nothing

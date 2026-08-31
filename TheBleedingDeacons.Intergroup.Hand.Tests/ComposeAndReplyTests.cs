@@ -220,6 +220,71 @@ public sealed class ComposeAndReplyTests
 		Assert.True(entry.CanReply);
 	}
 
+	/// <summary>
+	/// A notice cannot be replied to, on the card or in the history. The
+	/// server refuses both kinds outright — otherwise one answered call
+	/// becomes an unbounded exchange between two handsets — so a button
+	/// offering it would take a responder's words and lose them to a 404.
+	/// </summary>
+	[Fact]
+	public void AnAcknowledgementNoticeOffersNoReply()
+	{
+		var notice = Alerts.New(9, kind: HandAlert.KindMessageAcknowledged);
+
+		Assert.True(notice.IsNotice);
+		Assert.False(notice.CanReply);
+	}
+
+	[Fact]
+	public void AReplyCannotItselfBeRepliedTo()
+	{
+		var reply = Alerts.New(9, kind: HandAlert.KindMessageReply);
+
+		Assert.True(reply.IsNotice);
+		Assert.False(reply.CanReply);
+	}
+
+	[Fact]
+	public void AnOrdinaryAlertStillOffersReply()
+	{
+		Assert.True(Alerts.New(9).CanReply);
+	}
+
+	[Fact]
+	public void AHistoryRowForANoticeOffersNoReply()
+	{
+		var entry = AlertHistoryEntry.From(
+			Alerts.New(9, kind: HandAlert.KindMessageAcknowledged),
+			receivedAt: 100);
+
+		Assert.False(entry.CanReply);
+		Assert.False(entry.ShowReply);
+	}
+
+	/// <summary>
+	/// Rows written before the kind was stored read as empty, which is
+	/// not a notice — so they keep the behaviour they already had, and
+	/// the server refuses the ones it should.
+	/// </summary>
+	[Fact]
+	public void AHistoryRowFromBeforeTheKindWasStoredStillOffersReply()
+	{
+		Assert.True(new AlertHistoryEntry { Subject = "Callback wanted" }.CanReply);
+	}
+
+	[Fact]
+	public void TheReplyButtonFollowsTheRowBeingOpen()
+	{
+		var entry = AlertHistoryEntry.From(Alerts.New(9), receivedAt: 100);
+
+		Assert.True(entry.CanReply);
+		Assert.False(entry.ShowReply);
+
+		entry.IsExpanded = true;
+
+		Assert.True(entry.ShowReply);
+	}
+
 	[Fact]
 	public void AnExpiredEntryCannotBeRepliedTo()
 	{
