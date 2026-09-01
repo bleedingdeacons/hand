@@ -138,6 +138,40 @@
 		<AndroidKeyStore Condition="'$(AndroidKeyStore)' == ''">false</AndroidKeyStore>
 	</PropertyGroup>
 
+	<!--
+		One ABI on Debug too, unless asked otherwise.
+
+		<b>This is the debug loop's biggest cost by a wide margin.</b> The
+		Android SDK defaults RuntimeIdentifiers to 'android-arm64;android-x64',
+		and every packaging step — assembly embedding, dexing, native libs,
+		signing — is paid once per ABI. Measured on a real one-line change with
+		EmbedAssembliesIntoApk (which a hand-installed APK requires): 2m06 with
+		both, 1m07 with arm64 alone. Nothing about that second ABI reaches a
+		physical handset; it exists for the emulator.
+
+		<b>$(HandDebugAbi) is the way back.</b> Debugging on an emulator needs
+		x64, so pass -p:HandDebugAbi="android-arm64;android-x64" — or set it in
+		a Directory.Build.props of your own — and the old behaviour returns.
+		Release is untouched and still ships arm64 only.
+
+		<b>Set here rather than on the command line, and that is the whole
+		point.</b> -p:RuntimeIdentifiers=… is a *global* property, so it
+		propagates into the plain net10.0 projects this one references and they
+		start looking for their output under an android-arm64 RID folder that
+		does not exist:
+
+		    error MSB3030: Could not copy "obj\Debug\net10.0\android-arm64\
+		    TheBleedingDeacons.Intergroup.Hand.Core.dll" because it was not found
+
+		Which is the same trap -f falls into, for the same reason — see the
+		comment on TargetFrameworks above. Inside a PropertyGroup conditioned on
+		this project's own TargetFramework it stays this project's business.
+	-->
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug' and $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<HandDebugAbi Condition="'$(HandDebugAbi)' == ''">android-arm64</HandDebugAbi>
+		<RuntimeIdentifiers>$(HandDebugAbi)</RuntimeIdentifiers>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.65" Color="#B3261E" />
 		<!-- Splash matches Register's: same artwork, same background. The two
