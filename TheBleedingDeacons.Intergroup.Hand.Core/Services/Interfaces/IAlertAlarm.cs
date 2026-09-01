@@ -28,7 +28,17 @@ public interface IAlertAlarm
 	/// the alarm is already going does not layer a second sound on top,
 	/// because two alarms at once is just noise.
 	/// </summary>
-	Task StartAsync(HandAlert alert);
+	/// <param name="silent">
+	/// <para>Meeting mode. The audio is skipped and <b>the vibration is
+	/// not</b> — the responder still feels it, and a glance at the phone
+	/// still shows the alert. Only the room is spared.</para>
+	///
+	/// <para>Passed per call rather than held as state on the alarm,
+	/// because it is a property of the moment the alert arrives. A
+	/// responder leaving a meeting between two alerts should have the
+	/// second one heard.</para>
+	/// </param>
+	Task StartAsync(HandAlert alert, bool silent = false);
 
 	/// <summary>Stop. Safe to call when nothing is sounding.</summary>
 	Task StopAsync();

@@ -35,11 +35,24 @@ public class ReachConfiguration
 	public int PollSeconds { get; set; } = 20;
 
 	/// <summary>
-	/// Whether this handset should keep polling and alarming. Cleared
-	/// when the responder goes off duty; the app still holds its token,
-	/// it just stops making noise.
+	/// Whether this handset is in a meeting: everything still happens,
+	/// silently.
+	///
+	/// <para><b>This replaced an on/off duty switch, and the difference
+	/// matters.</b> Off duty stopped the poll, so alerts did not arrive at
+	/// all — a responder who forgot to come back on duty was simply
+	/// missing from the rota without anybody knowing. Meeting mode changes
+	/// only the volume: the poll runs, the push arrives, the card is
+	/// listed, the notification is posted, the handset still vibrates and
+	/// a red alert still takes the screen. What goes is the noise.</para>
+	///
+	/// <para><b>Off by default, which is the safe direction.</b> A handset
+	/// that has never been told otherwise makes a noise, and a handset
+	/// restored from a backup does too. It stays on until the responder
+	/// turns it off — there is no timer — so it is a switch, not a
+	/// snooze.</para>
 	/// </summary>
-	public bool OnDuty { get; set; } = true;
+	public bool InMeeting { get; set; }
 
 	/// <summary>
 	/// Whether this handset asks Reach for alerts, as well as listening
@@ -95,7 +108,7 @@ public class ReachConfiguration
 		{
 			BaseUrl = baseUrl,
 			PollSeconds = Math.Clamp(PollSeconds, 5, 300),
-			OnDuty = OnDuty,
+			InMeeting = InMeeting,
 			Poll = Poll,
 		};
 	}

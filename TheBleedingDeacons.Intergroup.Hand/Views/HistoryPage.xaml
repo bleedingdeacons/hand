@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="TheBleedingDeacons.Intergroup.Hand.Views.HistoryPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:models="clr-namespace:TheBleedingDeacons.Intergroup.Hand.Models;assembly=TheBleedingDeacons.Intergroup.Hand.Core"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:views="clr-namespace:TheBleedingDeacons.Intergroup.Hand.Views"
+    xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
+    x:Name="Page"
+    x:DataType="vm:HistoryViewModel"
+    Title="History">
+
+    <!--
+        The morning-after view, and deliberately the opposite of the duty
+        screen in every way that screen is loud.
+
+        Alerts are a full red field readable across a room because someone
+        has to act now. Nothing here needs acting on, so this is a quiet
+        list of closed rows: subject, when, what became of it, and a strip
+        of the level's colour down the side so a night reads as a shape
+        before it reads as a list. The body is behind a tap, because a
+        page that opened every alert at once would be unskimmable exactly
+        when there is most to skim.
+    -->
+
+    <Grid RowDefinitions="*,Auto">
+
+        <Label
+            Grid.Row="0"
+            Text="{x:Static vm:HistoryViewModel.EmptyTitle}"
+            IsVisible="{Binding HasEntries, Converter={toolkit:InvertedBoolConverter}}"
+            FontSize="28"
+            Opacity="0.45"
+            HorizontalOptions="Center"
+            VerticalOptions="Center" />
+
+        <CollectionView
+            Grid.Row="0"
+            ItemsSource="{Binding Entries}"
+            IsVisible="{Binding HasEntries}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="models:AlertHistoryEntry">
+
+                    <!--
+                        One row. The whole header is the tap target rather
+                        than a chevron: a responder reading this has just
+                        woken up, and a 12pt arrow is not what they should
+                        have to hit.
+                    -->
+                    <Grid Margin="12,5" ColumnDefinitions="6,*">
+
+                        <BoxView
+                            Grid.Column="0"
+                            Color="{Binding LevelBackground}"
+                            CornerRadius="3" />
+
+                        <VerticalStackLayout Grid.Column="1" Padding="12,10" Spacing="4">
+
+                            <VerticalStackLayout.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding ViewModel.ToggleCommand, Source={x:Reference Page}, x:DataType=views:HistoryPage}"
+                                    CommandParameter="{Binding .}" />
+                            </VerticalStackLayout.GestureRecognizers>
+
+                            <Label
+                                Text="{Binding Subject}"
+                                FontSize="17"
+                                FontAttributes="Bold" />
+
+                            <Label
+                                Text="{Binding ReceivedLine}"
+                                FontSize="13"
+                                Opacity="0.6" />
+
+                            <Label
+                                Text="{Binding StatusLine}"
+                                FontSize="13"
+                                Opacity="0.75" />
+
+                            <!-- Closed by default. See HistoryViewModel.Toggle. -->
+                            <Label
+                                Text="{Binding Body}"
+                                Margin="0,6,0,0"
+                                FontSize="15"
+                                IsVisible="{Binding IsExpanded}" />
+
+                            <Label
+                                Text="{Binding Reference}"
+                                FontSize="13"
+                                Opacity="0.6"
+                                IsVisible="{Binding IsExpanded}" />
+
+                            <!--
+                                Behind the tap, with the body, rather than
+                                on every closed row: this page is a list to
+                                skim, and a button on all thirty rows would
+                                undo that. It is here at all because an
+                                alert somebody else answered has no card
+                                left anywhere — this is the only place it
+                                can be replied to from.
+                            -->
+                            <Button
+                                Text="Reply"
+                                Margin="0,8,0,0"
+                                HeightRequest="40"
+                                FontSize="14"
+                                HorizontalOptions="Start"
+                                IsVisible="{Binding ShowReply}"
+                                Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:HistoryPage}"
+                                CommandParameter="{Binding .}" />
+
+                        </VerticalStackLayout>
+                    </Grid>
+
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button
+            Grid.Row="1"
+            Text="Clear history"
+            Margin="12"
+            HeightRequest="48"
+            IsVisible="{Binding HasEntries}"
+            Clicked="OnClearClicked" />
+
+    </Grid>
+</ContentPage>

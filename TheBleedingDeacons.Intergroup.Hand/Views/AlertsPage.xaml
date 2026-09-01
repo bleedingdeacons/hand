@@ -18,26 +18,55 @@
         phone from two metres away in the dark.
     -->
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="0">
+    <!--
+        <b>Not a ToolbarItem.</b> This screen sets
+        Shell.NavBarIsVisible="False" in AppShell, so there is no bar for
+        one to appear in — a toolbar item here renders nowhere at all and
+        the compose screen becomes unreachable. It looked right in the
+        XAML and was invisible on the handset.
+    -->
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Padding="0">
 
         <!-- Status bar: who is on duty, and whether anything is waiting. -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Padding="16,14" ColumnSpacing="12">
+        <!--
+            Four columns now, and they are tight. History earns its place
+            beside Settings rather than behind it, but two buttons plus the
+            duty switch leave the status line little room — so both buttons
+            are as small as they can be and still be hit by somebody who
+            has just woken up. Anything more here and the line wraps to
+            three.
+        -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" Padding="12,14" ColumnSpacing="6">
             <VerticalStackLayout Grid.Column="0" Spacing="2">
                 <Label Text="{Binding StatusLine}" FontSize="18" FontAttributes="Bold" />
                 <Label Text="{Binding Responder}" FontSize="13" Opacity="0.7" />
             </VerticalStackLayout>
 
+            <!--
+                In a meeting: alerting as normal, silently. This replaced
+                an on/off duty switch, and it is a different control in
+                the one way that matters — it never takes the handset off
+                the rota, it only decides whether the room hears.
+            -->
             <Switch
                 Grid.Column="1"
-                IsToggled="{Binding OnDuty}"
+                IsToggled="{Binding InMeeting}"
                 VerticalOptions="Center"
-                AutomationProperties.Name="On duty" />
+                AutomationProperties.Name="In a meeting" />
 
             <Button
                 Grid.Column="2"
+                Text="History"
+                FontSize="12"
+                Padding="8,6"
+                Command="{Binding OpenHistoryCommand}" />
+
+            <Button
+                Grid.Column="3"
                 Text="Settings"
-                FontSize="13"
-                Padding="12,6"
+                FontSize="12"
+                Padding="8,6"
                 Command="{Binding OpenSettingsCommand}" />
         </Grid>
 
@@ -70,10 +99,26 @@
             <CollectionView ItemsSource="{Binding Alerts}">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="models:HandAlert">
+                        <!--
+                            The card is the colour of its level, which is
+                            the whole point of the level: a responder
+                            should be able to tell a callback from a
+                            reminder across a room, before reading a word.
+
+                            The pair comes from HandAlert rather than from
+                            a DataTrigger here. Three levels would be two
+                            triggers on the background and two more on
+                            every label, and none of it testable — where
+                            the model's colours are covered by the same
+                            unit tests as everything else it derives. XAML
+                            converts the hex string to a Color on binding;
+                            it lives in Core as a string because Core has
+                            no MAUI workload to hold a Color at all.
+                        -->
                         <Border
                             Margin="12,6"
                             Padding="18"
-                            BackgroundColor="#B3261E"
+                            BackgroundColor="{Binding LevelBackground}"
                             StrokeThickness="0">
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="14" />
@@ -82,22 +127,33 @@
                             <VerticalStackLayout Spacing="8">
                                 <Label
                                     Text="{Binding Title}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="24"
                                     FontAttributes="Bold" />
 
                                 <Label
                                     Text="{Binding Body}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="16"
                                     IsVisible="{Binding Body, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
 
                                 <Label
                                     Text="{Binding Reference}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="13"
                                     Opacity="0.85"
                                     IsVisible="{Binding Reference, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <!-- This responder has taken this on. The
+                                     card stays after Acknowledge so the
+                                     reference and the contact are still to
+                                     hand; see HandAlert.AcknowledgedHere. -->
+                                <Label
+                                    Text="{Binding AnsweredLine}"
+                                    TextColor="{Binding LevelForeground}"
+                                    FontSize="15"
+                                    FontAttributes="Italic"
+                                    IsVisible="{Binding AcknowledgedHere}" />
 
                                 <!-- Contact details are fetched only when
                                      asked for: Reach audits every read, and
@@ -106,8 +162,8 @@
                                     Text="Show contact"
                                     Margin="0,4,0,0"
                                     BackgroundColor="Transparent"
-                                    TextColor="White"
-                                    BorderColor="White"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
                                     BorderWidth="1"
                                     HeightRequest="44"
                                     IsVisible="{Binding HasContact}"
@@ -118,24 +174,75 @@
                                 <ActivityIndicator
                                     IsRunning="{Binding IsLoadingContact}"
                                     IsVisible="{Binding IsLoadingContact}"
-                                    Color="White"
+                                    Color="{Binding LevelForeground}"
                                     HorizontalOptions="Start" />
 
                                 <Label
                                     Text="{Binding Contact}"
-                                    TextColor="White"
+                                    TextColor="{Binding LevelForeground}"
                                     FontSize="18"
                                     FontAttributes="Bold"
                                     IsVisible="{Binding IsContactShown}" />
 
+                                <!-- Acknowledge, or Close where there is
+                                     nothing to take on. See
+                                     HandAlert.ActionLabel: the command is
+                                     the same either way, because closing
+                                     still has to tell Reach this handset
+                                     has dealt with the alert. -->
                                 <Button
-                                    Text="Acknowledge"
+                                    Text="{Binding ActionLabel}"
                                     Margin="0,8,0,0"
-                                    BackgroundColor="White"
-                                    TextColor="#B3261E"
+                                    BackgroundColor="{Binding LevelForeground}"
+                                    TextColor="{Binding LevelBackground}"
                                     FontAttributes="Bold"
                                     HeightRequest="52"
                                     Command="{Binding ViewModel.AcknowledgeCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
+                                    CommandParameter="{Binding .}" />
+
+                                <!--
+                                    Reply is offered on a card, and also
+                                    from the history — which is the case
+                                    that matters. When somebody else
+                                    answers, Reach stops serving the
+                                    message and this card is removed, so
+                                    the history row is the only way left
+                                    to say anything about it.
+
+                                    Not on a notice, though: the server
+                                    refuses a reply to one, so the button
+                                    would take a responder's words and
+                                    throw them away against a 404. See
+                                    HandAlert.CanReply.
+                                -->
+                                <Button
+                                    Text="Reply"
+                                    BackgroundColor="Transparent"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
+                                    BorderWidth="1"
+                                    HeightRequest="44"
+                                    IsVisible="{Binding CanReply}"
+                                    Command="{Binding ViewModel.ReplyCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
+                                    CommandParameter="{Binding .}" />
+
+                                <!--
+                                    Only on a job this handset has taken
+                                    on. Passing back an alert nobody
+                                    accepted would be putting out something
+                                    that is still out; see
+                                    AlertController::resend(), which
+                                    refuses exactly that.
+                                -->
+                                <Button
+                                    Text="Pass back to the rota"
+                                    BackgroundColor="Transparent"
+                                    TextColor="{Binding LevelForeground}"
+                                    BorderColor="{Binding LevelForeground}"
+                                    BorderWidth="1"
+                                    HeightRequest="44"
+                                    IsVisible="{Binding AcknowledgedHere}"
+                                    Command="{Binding ViewModel.PassBackCommand, Source={x:Reference Page}, x:DataType=views:AlertsPage}"
                                     CommandParameter="{Binding .}" />
                             </VerticalStackLayout>
                         </Border>
@@ -147,10 +254,53 @@
         <Button
             Grid.Row="2"
             Text="Acknowledge all"
-            Margin="12"
+            Margin="12,12,12,0"
             HeightRequest="52"
             IsVisible="{Binding HasAlerts}"
             Command="{Binding AcknowledgeAllCommand}" />
+
+        <!--
+            Puts the phone back to looking like a phone, without taking
+            the handset off the rota.
+
+            At the base and plainly styled, because it is the one thing on
+            this screen that is not about an alert. It is deliberately not
+            the back gesture: leaving by that route works too, but a
+            responder who wants Hand out of the way should be able to say
+            so and know that nothing they pressed ended the shift. The poll
+            keeps running and the handset still rings.
+
+            There is nothing destructive beside it. The same button used to
+            sit on the settings page directly above Sign out, which is why
+            it is not there any more.
+        -->
+        <!--
+            The one thing on this screen that starts an alert rather than
+            answering one, so it sits at the base with Hide rather than in
+            the status line — which its own comment says is already as
+            tight as it goes.
+
+            Hidden when the server has no compose routes. That is feature
+            discovery, not a permission: every enrolled handset may send.
+            See DeviceSession.CanSend.
+        -->
+        <Button
+            Grid.Row="3"
+            Text="New message"
+            Margin="12,12,12,0"
+            HeightRequest="48"
+            FontSize="14"
+            IsVisible="{Binding CanSend}"
+            Command="{Binding ComposeCommand}" />
+
+        <Button
+            Grid.Row="4"
+            Text="Hide"
+            Margin="12"
+            HeightRequest="48"
+            FontSize="14"
+            IsVisible="{Binding CanHide}"
+            Command="{Binding HideCommand}" />
 
     </Grid>
 </ContentPage>

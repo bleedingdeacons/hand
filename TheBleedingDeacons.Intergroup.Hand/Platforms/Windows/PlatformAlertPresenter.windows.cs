@@ -31,17 +31,33 @@ public sealed partial class PlatformAlertPresenter
 	{
 		try
 		{
-			var notification = new AppNotificationBuilder()
+			var builder = new AppNotificationBuilder()
 				.AddText(alert.Title)
 				.AddText(alert.Body)
-				.SetScenario(AppNotificationScenario.Alarm)
-				.SetTag(alert.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-				.SetAudioUri(
-					new Uri("ms-appx:///Resources/Raw/reach_alert.wav"),
-					AppNotificationAudioLooping.Loop)
-				.BuildNotification();
+				.SetTag(alert.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-			AppNotificationManager.Default.Show(notification);
+			// Red alone gets the alarm treatment. Both settings below
+			// exist to make a duty alert impossible to miss — an
+			// Alarm-scenario toast stays on screen until it is dismissed
+			// and the looping audio does not stop by itself — and neither
+			// is appropriate for a level that is meant to be missable, or
+			// for news that somebody else has already dealt with it.
+			//
+			// Yellow and blue both fall through to an ordinary toast that
+			// fades, with the system's own sound. Windows has no third
+			// rung between "a toast" and "an alarm that will not stop", so
+			// the two quieter levels look the same here; they are still
+			// told apart by their card colour in the app.
+			if (alert.IsUrgent)
+			{
+				builder
+					.SetScenario(AppNotificationScenario.Alarm)
+					.SetAudioUri(
+						new Uri("ms-appx:///Resources/Raw/reach_alert.wav"),
+						AppNotificationAudioLooping.Loop);
+			}
+
+			AppNotificationManager.Default.Show(builder.BuildNotification());
 		}
 		catch (Exception ex)
 		{

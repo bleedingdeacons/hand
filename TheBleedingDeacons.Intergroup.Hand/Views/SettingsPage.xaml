@@ -3,9 +3,10 @@
     x:Class="TheBleedingDeacons.Intergroup.Hand.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     xmlns:vm="clr-namespace:TheBleedingDeacons.Intergroup.Hand.ViewModels"
-    x:DataType="vm:SettingsViewModel"
-    Title="Settings">
+    Title="Settings"
+    x:DataType="vm:SettingsViewModel">
 
     <!--
         Type on this page tracks the rest of the app. It was deliberately
@@ -13,7 +14,7 @@
         screen that had to be scrolled three times to reach the buttons at
         the bottom of it, which is a poor trade for type nobody reads from
         across a room. The duty screen is where size earns its keep.
-
+        
         The sizes are still set here rather than in
         Resources/Styles/Styles.xaml, which is shared with every other page
         and with Register: changing the implicit Label, Entry and Button
@@ -25,30 +26,60 @@
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="16">
 
-            <Label Text="Signed in as" FontSize="13" Opacity="0.6" />
-            <Label Text="{Binding Responder}" FontSize="18" FontAttributes="Bold" />
-
-            <Label Text="{Binding DeliveryMode}" FontSize="13" Opacity="0.7" />
-
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
-
-            <Label Text="Reach server address" FontSize="13" Opacity="0.6" />
-            <Entry
-                Placeholder="https://your-intergroup.example/"
-                Keyboard="Url"
-                FontSize="14"
-                Text="{Binding BaseUrl}" />
-
-            <Label Text="Check for alerts every (seconds)" FontSize="13" Opacity="0.6" />
-            <Entry
-                Keyboard="Numeric"
-                FontSize="14"
-                Text="{Binding PollSeconds}" />
             <Label
-                Text="How often this handset asks Reach for alerts. On Windows and macOS there is no push, so this is how alerts arrive."
-                FontSize="12"
-                Opacity="0.6" />
+                FontSize="13"
+                Opacity="0.6"
+                Text="Signed in as" />
+            <Label
+                FontAttributes="Bold"
+                FontSize="18"
+                Text="{Binding Responder}" />
 
+            <Label
+                FontSize="13"
+                Opacity="0.7"
+                Text="{Binding DeliveryMode}" />
+
+            <BoxView
+                Margin="0,8"
+                HeightRequest="1"
+                Opacity="0.15" />
+
+            <Label
+                FontSize="13"
+                Opacity="0.6"
+                Text="Device name" />
+            <Entry
+                Completed="OnFieldCommitted"
+                FontSize="14"
+                IsReadOnly="True"
+                Placeholder="This handset"
+                Text="{Binding DeviceLabel}"
+                Unfocused="OnFieldCommitted" />
+
+            <Label
+                FontSize="13"
+                Opacity="0.6"
+                Text="Reach server address" />
+            <Entry
+                Completed="OnFieldCommitted"
+                FontSize="14"
+                IsReadOnly="True"
+                Keyboard="Url"
+                Placeholder="https://your-intergroup.example/"
+                Text="{Binding BaseUrl}"
+                Unfocused="OnFieldCommitted" />
+
+            <Label
+                FontSize="13"
+                Opacity="0.6"
+                Text="Check for alerts every (seconds)" />
+            <Entry
+                Completed="OnFieldCommitted"
+                FontSize="14"
+                Keyboard="Numeric"
+                Text="{Binding PollSeconds}"
+                Unfocused="OnFieldCommitted" />
             <!--
                 Off means push only. Worth the warning underneath: the poll
                 is what covers a push that silently stopped working, and a
@@ -57,26 +88,20 @@
             <HorizontalStackLayout Spacing="8">
                 <CheckBox IsChecked="{Binding Poll}" VerticalOptions="Center" />
                 <Label
-                    Text="Check for alerts by polling"
                     FontSize="13"
+                    Text="Check for alerts by polling"
                     VerticalOptions="Center" />
             </HorizontalStackLayout>
             <Label
-                Text="Leave this on. With it off, alerts arrive only when Reach pushes them &#8212; so if push stops working, this handset goes quiet and nothing says so."
                 FontSize="12"
-                Opacity="0.6" />
+                Opacity="0.6"
+                Text="Leave this on. With it off, alerts arrive only when Reach pushes them &#8212; so if push stops working, this handset goes quiet and nothing says so." />
 
-            <Label Text="Device name" FontSize="13" Opacity="0.6" />
-            <Entry
-                Placeholder="This handset"
-                FontSize="14"
-                Text="{Binding DeviceLabel}" />
-            <Label
-                Text="Shown in Reach&#8217;s admin list so an administrator can tell handsets apart."
-                FontSize="12"
-                Opacity="0.6" />
 
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+            <BoxView
+                Margin="0,8"
+                HeightRequest="1"
+                Opacity="0.15" />
 
             <!--
                 The fingerprint. Left on screen but disabled when the
@@ -89,75 +114,79 @@
                     IsEnabled="{Binding FingerprintAvailable}"
                     VerticalOptions="Center" />
                 <Label
-                    Text="Ask for a fingerprint to open Hand"
                     FontSize="13"
+                    Text="Ask for a fingerprint to open Hand"
                     VerticalOptions="Center" />
             </HorizontalStackLayout>
             <Label
-                Text="Only when the app is opened cold, and never while an alert is waiting &#8212; a ringing handset always opens straight to the acknowledge button."
-                FontSize="12"
-                Opacity="0.6" />
-            <Label
-                Text="This handset cannot be asked for a fingerprint. Either none is set up on it, or this platform gives Hand no way to ask."
-                IsVisible="{Binding FingerprintUnavailable}"
                 FontSize="12"
                 Opacity="0.6"
+                Text="Only when the app is opened cold, and never while an alert is waiting &#8212; a ringing handset always opens straight to the acknowledge button." />
+            <Label
+                FontSize="12"
+                IsVisible="{Binding FingerprintUnavailable}"
+                Opacity="0.6"
+                Text="This handset cannot be asked for a fingerprint. Either none is set up on it, or this platform gives Hand no way to ask."
                 TextColor="#663C00" />
 
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
-
-            <Button Text="Save" HeightRequest="48" FontSize="14" Command="{Binding SaveCommand}" />
-
-            <Label
-                Text="{Binding StatusMessage}"
-                FontSize="13"
-                Opacity="0.8" />
-
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
+            <BoxView
+                Margin="0,8"
+                HeightRequest="1"
+                Opacity="0.15" />
 
             <!--
-                Two ways to be rid of this screen, and they are nothing
-                alike. Close is first and plainly styled because it is the
-                one a responder almost always wants; sign out is last and
-                red because it ends the shift. Hidden entirely on the Apple
-                heads, which will not let an app put itself away &#8212; see
-                IWindowVisibility.
+                No Save button. A settings page with one has two states —
+                what is on screen and what is in force — and nothing on a
+                handset says which you are looking at. So the toggles apply
+                as they are set, the text fields apply as they are left,
+                and the page applies again on the way out for anything
+                typed and never unfocused. See SettingsViewModel.ApplyAsync.
+                
+                The label below is no longer a receipt. It is empty when
+                everything worked, and carries the two things a responder
+                does need telling: a refused fingerprint, and a failure.
+            -->
+            <Label
+                FontSize="13"
+                IsVisible="{Binding StatusMessage, Converter={toolkit:IsStringNotNullOrEmptyConverter}}"
+                Opacity="0.8"
+                Text="{Binding StatusMessage}" />
+
+            <!--
+                One way off this screen, and it is the one that ends the
+                shift. Red and last because of it.
+                
+                There used to be a Close button above this, which put the
+                app out of the way without taking the handset off duty. It
+                is gone: every platform already has its own way of putting
+                an app aside — the back gesture, the home button, the
+                window controls — and a button that duplicated one of them
+                sat directly above the one control here that cannot be
+                undone. Two buttons of the same size and shape, one
+                harmless and one ending the shift, is not an arrangement
+                worth keeping for a convenience the handset already
+                offers.
             -->
             <Button
-                Text="Close"
-                IsVisible="{Binding CanHide}"
-                HeightRequest="48"
-                FontSize="14"
-                Command="{Binding HideCommand}" />
-
-            <Label
-                Text="Puts Hand out of the way without taking this handset off duty. It keeps checking for alerts and it will still ring."
-                IsVisible="{Binding CanHide}"
-                FontSize="12"
-                Opacity="0.6" />
-
-            <BoxView HeightRequest="1" Opacity="0.15" Margin="0,8" />
-
-            <Button
-                Text="Sign out"
-                HeightRequest="48"
-                FontSize="14"
                 BackgroundColor="#B3261E"
-                TextColor="White"
-                Command="{Binding SignOutCommand}" />
+                Command="{Binding SignOutCommand}"
+                FontSize="14"
+                HeightRequest="48"
+                Text="Sign out"
+                TextColor="White" />
 
             <Label
-                Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. Use Close to put Hand away and stay on duty."
                 FontSize="12"
                 Opacity="0.6"
+                Text="Takes this handset off the rota. It stops receiving alerts altogether &#8212; it will not ring, and nothing will say it has gone quiet. To put Hand away and stay on duty, use the phone&#8217;s own back or home gesture instead."
                 TextColor="#663C00" />
 
             <Label
-                Text="{Binding Build}"
+                Margin="0,16,0,0"
                 FontSize="11"
-                Opacity="0.5"
                 HorizontalOptions="Center"
-                Margin="0,16,0,0" />
+                Opacity="0.5"
+                Text="{Binding Build}" />
 
         </VerticalStackLayout>
     </ScrollView>

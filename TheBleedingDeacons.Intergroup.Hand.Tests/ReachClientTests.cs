@@ -232,8 +232,44 @@ public sealed class ReachClientTests
 
 		Assert.True(result.Success);
 		Assert.Equal(2, result.Value!.Count);
+		// No level on either, so both fall back to their priority — which
+		// is exactly what a Reach that predates the level sends.
 		Assert.True(result.Value[0].IsUrgent);
 		Assert.Equal("night", result.Value[1].Payload["slot"]);
+	}
+
+	/// <summary>
+	/// The level and the response requirement come off the wire as Reach
+	/// sends them. Pinned here as well as on the model because this is the
+	/// route the two halves actually meet on: a rename on either side
+	/// shows up as a card that is the wrong colour and a button with the
+	/// wrong word on it, and nothing else says so.
+	/// </summary>
+	[Fact]
+	public async Task ReadsTheLevelAndTheResponseRequirement()
+	{
+		var (client, _) = Ok("""
+			{"alerts":[
+				{"id":1,"kind":"call_request","level":"red","response":"first","priority":"urgent","payload":[]},
+				{"id":2,"kind":"shift_reminder","level":"blue","response":"none","priority":"normal","payload":[]}
+			],"now":1755250000}
+			""");
+
+		var result = await client.GetPendingAlertsAsync("t", CancellationToken.None);
+
+		Assert.True(result.Success);
+
+		var job = result.Value![0];
+		Assert.True(job.IsUrgent);
+		Assert.False(job.IsQuiet);
+		Assert.False(job.IsInformational);
+		Assert.Equal("Acknowledge", job.ActionLabel);
+
+		var reminder = result.Value[1];
+		Assert.False(reminder.IsUrgent);
+		Assert.True(reminder.IsQuiet);
+		Assert.True(reminder.IsInformational);
+		Assert.Equal("Close", reminder.ActionLabel);
 	}
 
 	/// <summary>

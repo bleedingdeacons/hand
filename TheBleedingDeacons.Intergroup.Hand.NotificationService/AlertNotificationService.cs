@@ -1,4 +1,5 @@
 using Foundation;
+using ObjCRuntime;
 using TheBleedingDeacons.Intergroup.Hand.Models;
 using UserNotifications;
 
@@ -37,11 +38,57 @@ namespace TheBleedingDeacons.Intergroup.Hand.NotificationService;
 /// they cannot read will phone in; one never woken will not. That is the
 /// same judgement the Android path and the server both make.</para>
 /// </summary>
+/// <remarks>
+/// <para><b>The C# name and the Objective-C name are deliberately
+/// different.</b> iOS instantiates this from
+/// <c>NSExtensionPrincipalClass</c> in <c>Info.plist</c>, which names the
+/// <i>exported</i> class — and that is pinned by the
+/// <see cref="RegisterAttribute"/> below, not by what the type is called
+/// here. So the native contract reads <c>NotificationService</c> whatever
+/// this class is renamed to, and the C# side is free to be named
+/// something that is not also the name of its own namespace. It was
+/// `NotificationService` in both places, which the Meziantou analyzer
+/// refuses (MA0049) and which is genuinely confusing to read.</para>
+///
+/// <para>Changing the string in the attribute, on the other hand, is a
+/// breaking change to the bundle: it must go on matching
+/// <c>Info.plist</c> exactly, or iOS launches the extension and finds
+/// nothing to instantiate.</para>
+/// </remarks>
 [Register("NotificationService")]
-public sealed class NotificationService : UNNotificationServiceExtension
+public sealed class AlertNotificationService : UNNotificationServiceExtension
 {
 	private Action<UNNotificationContent>? _deliver;
 	private UNMutableNotificationContent? _content;
+
+	/// <summary>
+	/// The constructor iOS actually uses.
+	///
+	/// <para><b>Nothing in managed code calls this, and it still has to
+	/// exist.</b> The extension is instantiated by the Objective-C
+	/// runtime, from the class name in <c>Info.plist</c>'s
+	/// <c>NSExtensionPrincipalClass</c> — so what arrives is a native
+	/// handle to an object that already exists, and the job of this
+	/// constructor is to adopt it rather than to construct anything.
+	/// That is the shape every <see cref="Register"/>-ed
+	/// <see cref="NSObject"/> subclass takes.</para>
+	///
+	/// <para>Without it the compiler synthesises a parameterless
+	/// constructor whose implicit <c>base()</c> call has nothing to bind
+	/// to — <see cref="UNNotificationServiceExtension"/> exposes only
+	/// handle-taking constructors — and the class fails to compile with
+	/// <c>CS1729</c>. That went unnoticed because nothing compiles this
+	/// project: CI builds the Android head alone, and the extension is
+	/// unbuilt source until somebody opens it on a Mac.</para>
+	///
+	/// <para><c>public</c> rather than the customary <c>protected</c>
+	/// only because this class is sealed, where a protected member would
+	/// be a warning and mean nothing.</para>
+	/// </summary>
+	public AlertNotificationService(NativeHandle handle)
+		: base(handle)
+	{
+	}
 
 	/// <summary>
 	/// Called by iOS with the arriving notification. Whatever is passed

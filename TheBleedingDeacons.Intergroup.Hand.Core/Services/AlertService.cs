@@ -21,11 +21,16 @@ namespace TheBleedingDeacons.Intergroup.Hand.Services;
 /// keyed by id, so a push and a poll carrying the same alert produce one
 /// entry and one alarm.</para>
 ///
-/// <para>One kind that arrives on this loop is not an alert at all. A
+/// <para>Two kinds that arrive on this loop are not alerts at all. A
 /// <see cref="HandAlert.KindDeviceRemoved"/> notice is Reach telling
 /// this handset it has been taken off the rota, and it is intercepted at
 /// the door and turned into a sign-out — see
-/// <see cref="HandleRemovalNoticeAsync"/>.</para>
+/// <see cref="HandleRemovalNoticeAsync"/>. A
+/// <see cref="HandAlert.KindMessageAcknowledged"/> notice says another
+/// responder has picked something up: it is admitted like anything else
+/// so it can be read, but it never reaches the alarm, and on the way in
+/// it takes the message it reports on off this handset — see
+/// <see cref="RemoveMessageAsync"/>.</para>
 /// </summary>
 public sealed class AlertService : IAlertService, IDisposable
 {
@@ -34,6 +39,7 @@ public sealed class AlertService : IAlertService, IDisposable
 	private readonly IAlertAlarm _alarm;
 	private readonly IPlatformAlertPresenter _presenter;
 	private readonly IUiDispatcher _dispatcher;
+	private readonly IAlertHistory _history;
 
 	private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -48,19 +54,39 @@ public sealed class AlertService : IAlertService, IDisposable
 	private CancellationTokenSource? _pollLoop;
 	private bool _disposed;
 
+	/// <summary>
+	/// Whether the alarm is currently sounding.
+	///
+	/// <para>Tracked so that it is asked to stop once rather than every
+	/// time something leaves the outstanding set. Without this, clearing
+	/// the last alert in two steps — settle the card, then close it —
+	/// stopped the alarm twice, which is harmless on the current alarm and
+	/// exactly the sort of thing that stops being harmless later.</para>
+	///
+	/// <para>Read and written under <see cref="_gate"/>, with the actual
+	/// call made outside it: the alarm is platform code and holding a lock
+	/// across it is how a deadlock gets written.</para>
+	/// </summary>
+	private bool _alarmSounding;
+
 	public AlertService(
 		IReachClient reach,
 		IConfigurationService configuration,
 		IAlertAlarm alarm,
 		IPlatformAlertPresenter presenter,
-		IUiDispatcher dispatcher)
+		IUiDispatcher dispatcher,
+		IAlertHistory history)
 	{
 		_reach = reach ?? throw new ArgumentNullException(nameof(reach));
 		_configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 		_alarm = alarm ?? throw new ArgumentNullException(nameof(alarm));
 		_presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
 		_dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+		_history = history ?? throw new ArgumentNullException(nameof(history));
 	}
+
+	/// <summary>Now, as the history records it.</summary>
+	private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
 	public ObservableCollection<HandAlert> Active { get; } = [];
 
@@ -143,9 +169,44 @@ public sealed class AlertService : IAlertService, IDisposable
 			cts.Dispose();
 		}
 
+		await _gate.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			_alarmSounding = false;
+		}
+		finally
+		{
+			_gate.Release();
+		}
+
 		await _alarm.StopAsync().ConfigureAwait(false);
 
 		Log.Information("Alert polling stopped");
+	}
+
+	public async Task SilenceAsync()
+	{
+		// The poll is untouched, and so is every outstanding alert. Only
+		// the noise stops.
+		//
+		// _alarmSounding is cleared so the loop does not believe an alarm
+		// is still running and skip restarting one later; the alerts that
+		// were sounding stay outstanding, and a red one arriving after
+		// this will start the alarm again — silently, while meeting mode
+		// is on.
+		await _gate.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			_alarmSounding = false;
+		}
+		finally
+		{
+			_gate.Release();
+		}
+
+		await _alarm.StopAsync().ConfigureAwait(false);
+
+		Log.Information("Alarm silenced for meeting mode");
 	}
 
 	public Task RefreshAsync() => PollAsync(CancellationToken.None);
@@ -163,12 +224,41 @@ public sealed class AlertService : IAlertService, IDisposable
 	{
 		ArgumentNullException.ThrowIfNull(alert);
 
-		// Remove it locally first. The responder has silenced the alarm and
-		// the UI must reflect that immediately, whatever the network is
-		// doing; the server-side acknowledgement below is what stops it
-		// coming back on the next poll, and if that fails the poll will
-		// simply re-admit it — which is the correct outcome, not a bug.
-		await RemoveAsync(alert.Id).ConfigureAwait(false);
+		// Already settled: this is the second press, which is Close. The
+		// card goes and nothing else happens — Reach was told the first
+		// time round, and a notice is told below on its only press.
+		if (alert.AcknowledgedHere)
+		{
+			await RemoveAsync(alert.Id).ConfigureAwait(false);
+			return;
+		}
+
+		// A message nobody has to take on is news rather than a job, so
+		// its one button removes it outright — there is nothing to keep
+		// the card for. Everything else is silenced and settled but
+		// *kept*: the responder has just accepted a call and now needs the
+		// reference and the Show contact button to make it. Removing the
+		// card at that moment was the old behaviour and it was exactly
+		// backwards.
+		//
+		// Either way Reach is told below. Closing is how the server
+		// learns this handset has dealt with its own copy, which is what
+		// stops the next poll handing it straight back.
+		if (alert.IsInformational)
+		{
+			await RemoveAsync(alert.Id).ConfigureAwait(false);
+		}
+		else
+		{
+			await SettleAsync(alert).ConfigureAwait(false);
+
+			// Only the branch that took something on. An informational card
+			// was recorded as closed the moment it arrived — there was
+			// never anything outstanding about it to resolve.
+			await _history
+				.SettleAsync(alert.Id, AlertHistoryStatus.Acknowledged, Now)
+				.ConfigureAwait(false);
+		}
 
 		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
 		if (string.IsNullOrEmpty(token))
@@ -185,6 +275,81 @@ public sealed class AlertService : IAlertService, IDisposable
 
 			await HandleFailureAsync(result.Failure).ConfigureAwait(false);
 		}
+	}
+
+	public async Task<bool> ReplyAsync(long alertId, string body)
+	{
+		if (string.IsNullOrWhiteSpace(body))
+		{
+			return false;
+		}
+
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			return false;
+		}
+
+		var result = await _reach
+			.ReplyAsync(token, alertId, body.Trim(), CancellationToken.None)
+			.ConfigureAwait(false);
+
+		if (!result.Success)
+		{
+			Log.Warning(
+				"Reply to alert {AlertId} was refused: {Failure} {Message}",
+				alertId, result.Failure, result.Message);
+
+			await HandleFailureAsync(result.Failure).ConfigureAwait(false);
+			return false;
+		}
+
+		// Deliberately settles nothing. A reply is not a second person
+		// taking the job on, so an alert still outstanding stays
+		// outstanding and its Acknowledge button stays where it was.
+		Log.Information("Replied to alert {AlertId}", alertId);
+
+		return true;
+	}
+
+	public async Task<bool> ResendAsync(HandAlert alert)
+	{
+		ArgumentNullException.ThrowIfNull(alert);
+
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			return false;
+		}
+
+		var result = await _reach
+			.ResendAsync(token, alert.Id, CancellationToken.None)
+			.ConfigureAwait(false);
+
+		if (!result.Success)
+		{
+			Log.Warning(
+				"Alert {AlertId} could not be passed back: {Failure} {Message}",
+				alert.Id, result.Failure, result.Message);
+
+			await HandleFailureAsync(result.Failure).ConfigureAwait(false);
+			return false;
+		}
+
+		// The job has gone back to the rota, so it is no longer this
+		// handset's — the card goes and the history says what became of
+		// it. Unlike a reply, this one really is finished here.
+		//
+		// Reach raised the new message with this handset excluded, so the
+		// next poll does not hand the same job straight back.
+		await RemoveAsync(alert.Id).ConfigureAwait(false);
+		await _history
+			.SettleAsync(alert.Id, AlertHistoryStatus.PassedOn, Now)
+			.ConfigureAwait(false);
+
+		Log.Information("Alert {AlertId} passed back to the rota", alert.Id);
+
+		return true;
 	}
 
 	public async Task ShowContactAsync(HandAlert alert)
@@ -234,20 +399,33 @@ public sealed class AlertService : IAlertService, IDisposable
 
 	public async Task AcknowledgeAllAsync()
 	{
+		// Acknowledged *and* closed, unlike a single press.
+		//
+		// <para>Acknowledging one alert now keeps its card, because the
+		// responder has taken that job and needs its reference and contact
+		// to do it. Nobody takes on five jobs at once by pressing one
+		// button, so this is the other thing: clearing a screen. Leaving
+		// five settled cards behind would make the button's name a
+		// lie.</para>
 		foreach (var alert in Active.ToArray())
 		{
 			await AcknowledgeAsync(alert).ConfigureAwait(false);
+
+			if (alert.AcknowledgedHere)
+			{
+				await RemoveAsync(alert.Id).ConfigureAwait(false);
+			}
 		}
 	}
 
 	private async Task PollAsync(CancellationToken cancellationToken)
 	{
-		var configuration = _configuration.GetReachConfiguration();
-		if (!configuration.OnDuty)
-		{
-			return;
-		}
-
+		// <b>No duty gate here any more.</b> This used to return early when
+		// the responder was off duty, which meant alerts did not arrive at
+		// all — a handset that had quietly left the rota, with nobody told.
+		// Meeting mode replaced it and changes only the volume, so the poll
+		// now always runs and the decision about noise is made per alert
+		// when one is admitted. See ReachConfiguration.InMeeting.
 		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
 		if (string.IsNullOrEmpty(token))
 		{
@@ -329,6 +507,26 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
+		// A notice does two things, and this is the first: it marks the
+		// alert it reports on as already answered, wherever that alert is
+		// still sitting in this handset's list. Done before the expiry and
+		// duplicate checks below on purpose — a notice is a statement
+		// about the past that goes on being true, so a late or repeated
+		// one should still apply what it says even where it is not itself
+		// worth showing again.
+		if (alert.IsAcknowledgementNotice)
+		{
+			// The history hears about it before the expiry check below, for
+			// the same reason the removal does: a notice is a statement
+			// about the past that goes on being true, and a late one still
+			// says who answered.
+			await _history
+				.AnsweredElsewhereAsync(alert.AcknowledgesMessage, alert.AcknowledgedByName, Now)
+				.ConfigureAwait(false);
+
+			await RemoveMessageAsync(alert).ConfigureAwait(false);
+		}
+
 		var now = DateTimeOffset.UtcNow;
 
 		// A push can be delivered late, and a handset back from a long time
@@ -336,6 +534,16 @@ public sealed class AlertService : IAlertService, IDisposable
 		// stopped mattering an hour ago.
 		if (alert.IsExpired(now))
 		{
+			// Remembered even though it is never shown. "Nothing arrived"
+			// and "something arrived while the handset was in a tunnel and
+			// had gone stale by the time it surfaced" are different
+			// answers, and the second is the one worth having the morning
+			// after.
+			await _history.RecordAsync(alert, alert.CreatedAt).ConfigureAwait(false);
+			await _history
+				.SettleAsync(alert.Id, AlertHistoryStatus.Expired, Now)
+				.ConfigureAwait(false);
+
 			Log.Debug("Alert {AlertId} ignored: already expired", alert.Id);
 			return;
 		}
@@ -344,9 +552,35 @@ public sealed class AlertService : IAlertService, IDisposable
 		bool admitted;
 		try
 		{
-			if (_handled.Contains(alert.Id) || Active.Any(a => a.Id == alert.Id))
+			var existing = Active.FirstOrDefault(a => a.Id == alert.Id);
+
+			if (_handled.Contains(alert.Id) || existing is not null)
 			{
 				admitted = false;
+
+				// <b>A duplicate is not always identical, and the one
+				// field that differs is the one that matters.</b> The push
+				// cannot carry contact details and older servers did not
+				// even carry the flag saying they exist, so an alert
+				// admitted from a push can say it has none while the poll
+				// copy arriving seconds later knows better. Discarding
+				// that outright left Show contact permanently absent on
+				// exactly the handsets push works on.
+				//
+				// Promoted in one direction only. The poll joins the
+				// contacts table and is authoritative that a contact
+				// exists; nothing here should be able to take one away,
+				// because a push that simply omitted the flag would then
+				// erase a button the responder can already see.
+				if (existing is { HasContact: false } && alert.HasContact)
+				{
+					await _dispatcher
+						.InvokeAsync(() => existing.HasContact = true)
+						.ConfigureAwait(false);
+
+					Log.Debug(
+						"Alert {AlertId} gained its contact flag from the poll", alert.Id);
+				}
 			}
 			else
 			{
@@ -364,22 +598,154 @@ public sealed class AlertService : IAlertService, IDisposable
 			return;
 		}
 
+		// Recorded on admission rather than on arrival, so the push and the
+		// poll that follows it produce one row rather than two — the
+		// duplicate is already resolved above.
+		await _history.RecordAsync(alert, Now).ConfigureAwait(false);
+
 		Log.Information(
-			"Alert {AlertId} admitted: {Kind} {Reference} (urgent={Urgent})",
-			alert.Id, alert.Kind, alert.Reference, alert.IsUrgent);
+			"Alert {AlertId} admitted: {Kind} {Reference} ({Level}, {Response})",
+			alert.Id, alert.Kind, alert.Reference, alert.LevelOrDerived, alert.Response);
+
+		// Read once, here, and used for both the notification and the
+		// alarm: a single alert must not be silent in the tray and audible
+		// in the room, or the other way about.
+		var silent = _configuration.GetReachConfiguration().InMeeting;
 
 		// The OS notification first: it is what a responder sees if the app
 		// is not on screen, and it must be up even if the audio fails.
 		try
 		{
-			await _presenter.PresentAsync(alert).ConfigureAwait(false);
+			await _presenter.PresentAsync(alert, silent).ConfigureAwait(false);
 		}
 		catch (Exception ex)
 		{
 			Log.Error(ex, "Alert {AlertId} could not be presented", alert.Id);
 		}
 
-		await _alarm.StartAsync(alert).ConfigureAwait(false);
+		// <b>Only red sounds the alarm.</b> The looping siren is the thing
+		// that makes a handset ring like a call until somebody answers,
+		// and it is exactly what separates the top level from the other
+		// two: yellow is a notification that makes a noise and can be
+		// missed, blue does not even do that. This used to fire for
+		// everything that was not a notice, because a notice was the only
+		// quiet thing there was.
+		if (!alert.IsUrgent)
+		{
+			return;
+		}
+
+		await _gate.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			_alarmSounding = true;
+		}
+		finally
+		{
+			_gate.Release();
+		}
+
+		await _alarm.StartAsync(alert, silent).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Whether one card is still a reason for the alarm to be sounding.
+	///
+	/// <para><b>Outstanding is not enough — it has to be red.</b> Only red
+	/// starts the alarm (see <c>AdmitAsync</c>), so only red may keep it
+	/// going. Counting every unsettled card would mean a yellow reminder
+	/// arriving mid-call left the siren running after the callback it was
+	/// actually ringing for had been answered, with nothing on screen
+	/// explaining why.</para>
+	///
+	/// <para>Written once and used by both stop paths, because an alarm
+	/// that two call sites disagree about when to stop is an alarm that
+	/// sometimes does not.</para>
+	/// </summary>
+	private static bool StillAlarming(HandAlert alert) => !alert.IsSettled && alert.IsUrgent;
+
+	/// <summary>
+	/// Mark an alert as taken by this responder: silence it, drop its
+	/// notification, and leave the card on screen.
+	///
+	/// <para>Everything <see cref="RemoveAsync"/> does except the removal.
+	/// The id is remembered so neither route re-admits it, the tray
+	/// notification goes because the alarm is over, and the alarm itself
+	/// stops once nothing unsettled is left.</para>
+	/// </summary>
+	private async Task SettleAsync(HandAlert alert)
+	{
+		await _gate.WaitAsync().ConfigureAwait(false);
+		bool nothingLeft;
+		try
+		{
+			Remember(alert.Id);
+
+			await _dispatcher.InvokeAsync(() => alert.AcknowledgedHere = true).ConfigureAwait(false);
+
+			nothingLeft = _alarmSounding && !Active.Any(StillAlarming);
+			_alarmSounding &= !nothingLeft;
+		}
+		finally
+		{
+			_gate.Release();
+		}
+
+		await _presenter.DismissAsync(alert.Id).ConfigureAwait(false);
+
+		if (nothingLeft)
+		{
+			await _alarm.StopAsync().ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
+	/// Take a message off this handset because somebody else answered it.
+	///
+	/// <para><b>Removed, not marked.</b> An answered message is over: the
+	/// responder who took it has the job, and leaving thirty other people
+	/// a card to dismiss one by one is work invented for no reason. Reach
+	/// stops serving the message at the same moment, which is what keeps
+	/// the next poll from handing it straight back.</para>
+	///
+	/// <para><b>Matched on the message uuid, never on an id.</b> The id a
+	/// notice could quote is the id of whichever copy the other responder
+	/// happened to answer, and a message sent to a responder holding two
+	/// handsets is two rows with two ids. The uuid is the only thing the
+	/// copies share — see <see cref="HandAlert.MessageUuid"/>.</para>
+	///
+	/// <para>Finding nothing is normal and not a fault: the alert may have
+	/// been acknowledged here already, or expired out of the list, or this
+	/// handset may never have had it. The notice is still shown either
+	/// way, because "Jo answered the 3am callback" is worth reading
+	/// whether or not the original was ever on screen.</para>
+	/// </summary>
+	private async Task RemoveMessageAsync(HandAlert notice)
+	{
+		var messageUuid = notice.AcknowledgesMessage;
+		if (messageUuid.Length == 0)
+		{
+			return;
+		}
+
+		// Snapshotted before removing: RemoveAsync mutates Active, and
+		// every copy has to go rather than the first match — a responder
+		// holding two handsets is the reason the uuid exists.
+		var answered = Active
+			.Where(a => string.Equals(a.MessageUuid, messageUuid, StringComparison.Ordinal))
+			.Select(a => a.Id)
+			.ToArray();
+
+		foreach (var id in answered)
+		{
+			await RemoveAsync(id).ConfigureAwait(false);
+		}
+
+		Log.Information(
+			"Message {MessageUuid} was answered by {Responder}; removed {Count} alert(s) here",
+			messageUuid,
+			notice.AcknowledgedByName,
+			answered.Length);
 	}
 
 	private async Task RemoveAsync(long alertId)
@@ -399,7 +765,13 @@ public sealed class AlertService : IAlertService, IDisposable
 				}
 			}).ConfigureAwait(false);
 
-			nothingLeft = Active.Count == 0;
+			// Counted on what is still outstanding rather than on the list
+			// being empty: an acknowledged card stays on screen now, and
+			// it must not keep the alarm going. Gated on the alarm actually
+			// sounding so that clearing the last card in two steps does not
+			// stop it twice.
+			nothingLeft = _alarmSounding && !Active.Any(StillAlarming);
+			_alarmSounding &= !nothingLeft;
 		}
 		finally
 		{

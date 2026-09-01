@@ -78,4 +78,62 @@ public interface IReachClient
 	/// the cause, so there is no reason to send one.</para>
 	/// </summary>
 	Task<ReachResult<bool>> ReportUnreadableAsync(string token, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// A page of the member directory, for the recipient picker.
+	///
+	/// <para>Names and home groups only. A recipient is chosen by id and
+	/// resolved to an address on the server — see <see cref="HandMember"/>
+	/// on why the wire carries no addresses at all.</para>
+	/// </summary>
+	Task<ReachResult<IReadOnlyList<HandMember>>> GetMembersAsync(
+		string token, string search, int page, CancellationToken cancellationToken);
+
+	/// <summary>The committee tree, flattened, each row carrying its depth.</summary>
+	Task<ReachResult<IReadOnlyList<HandCommittee>>> GetCommitteesAsync(
+		string token, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Raise a message to one member or to one committee.
+	///
+	/// <para>Exactly one of <paramref name="memberId"/> and
+	/// <paramref name="committeeSlug"/> is sent. Neither is optional in
+	/// the sense of "leave both out and it goes to everybody" — the
+	/// server refuses that, deliberately, because any responder can send
+	/// and a slip must not put the whole rota's phones on.</para>
+	/// </summary>
+	Task<ReachResult<bool>> SendAlertAsync(
+		string token,
+		string subject,
+		string body,
+		string level,
+		string response,
+		long memberId,
+		string committeeSlug,
+		CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Reply to an alert in free text.
+	///
+	/// <para>Works after another responder has acknowledged, which is the
+	/// point of it: Reach authorises this on whether the alert could have
+	/// been sent to this handset, not on who answered it. Hand offers it
+	/// from the history for exactly that case.</para>
+	///
+	/// <para>The text is dispatched onward as an alert, so it reaches a
+	/// lock screen. The same rule applies as to everything else: no
+	/// personal data.</para>
+	/// </summary>
+	Task<ReachResult<bool>> ReplyAsync(
+		string token, long alertId, string body, CancellationToken cancellationToken);
+
+	/// <summary>
+	/// Put a job this handset acknowledged back out to the people it came
+	/// from, as a new message.
+	///
+	/// <para>Refused for anybody who did not acknowledge it, for anything
+	/// informational, and for a notice. Carries no parameters: everything
+	/// is copied from the alert being passed on.</para>
+	/// </summary>
+	Task<ReachResult<bool>> ResendAsync(string token, long alertId, CancellationToken cancellationToken);
 }

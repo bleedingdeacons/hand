@@ -23,8 +23,11 @@ public sealed class AlertServiceTests
 	private readonly FakeAlarm _alarm = new();
 	private readonly FakePresenter _presenter = new();
 	private readonly InlineDispatcher _dispatcher = new();
+	private readonly InMemoryAlertHistoryStore _historyStore = new();
 
-	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher);
+	private AlertHistory History => field ??= new AlertHistory(_historyStore, _dispatcher);
+
+	private AlertService Build() => new(_reach, _config, _alarm, _presenter, _dispatcher, History);
 
 	/// <summary>
 	/// A push this handset could not open is reported to Reach.
@@ -100,11 +103,12 @@ public sealed class AlertServiceTests
 	[Fact]
 	public void Constructor_RefusesItsDependenciesBeingNull()
 	{
-		Assert.Throws<ArgumentNullException>(() => new AlertService(null!, _config, _alarm, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, null!, _alarm, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, null!, _presenter, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, null!, _dispatcher));
-		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, null!));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(null!, _config, _alarm, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, null!, _alarm, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, null!, _presenter, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, null!, _dispatcher, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, null!, History));
+		Assert.Throws<ArgumentNullException>(() => new AlertService(_reach, _config, _alarm, _presenter, _dispatcher, null!));
 	}
 
 	// ── Admission ─────────────────────────────────────────────────────
@@ -220,18 +224,88 @@ public sealed class AlertServiceTests
 
 	// ── Acknowledgement ───────────────────────────────────────────────
 
+	/// <summary>
+	/// Acknowledging silences and tells Reach, and <b>keeps the card</b>.
+	///
+	/// <para>It used to remove it, which took the reference and the Show
+	/// contact button away at the moment the responder started needing
+	/// them — they have just accepted a call and now have to make it. The
+	/// alarm and the tray notification still go, because those are about
+	/// being summoned and the summoning is over.</para>
+	/// </summary>
 	[Fact]
-	public async Task AcknowledgingRemovesTheAlert_DismissesIt_AndTellsReach()
+	public async Task AcknowledgingKeepsTheCard_SilencesIt_AndTellsReach()
 	{
 		using var service = Build();
 		await service.HandlePushAsync(Alerts.New(7));
 
 		await service.AcknowledgeAsync(service.Active[0]);
 
-		Assert.Empty(service.Active);
+		Assert.Single(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
+		Assert.Equal("Close", service.Active[0].ActionLabel);
 		Assert.Equal([7L], _presenter.Dismissed);
 		Assert.Equal([7L], _reach.Acknowledged);
 		Assert.Equal(1, _alarm.StopCount);
+	}
+
+	/// <summary>The second press is Close, and Close is local.</summary>
+	[Fact]
+	public async Task ClosingAnAcknowledgedCardRemovesItWithoutTellingReachAgain()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7));
+
+		await service.AcknowledgeAsync(service.Active[0]);
+		await service.AcknowledgeAsync(service.Active[0]);
+
+		Assert.Empty(service.Active);
+		Assert.Equal([7L], _reach.Acknowledged);
+	}
+
+	/// <summary>
+	/// <b>Only red sounds the alarm.</b> The looping siren is what makes a
+	/// handset ring like a call until somebody answers, and it is exactly
+	/// what separates the top level from the other two.
+	/// </summary>
+	[Fact]
+	public async Task AYellowAlertIsPresentedButNeverRings()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7, level: HandAlert.LevelYellow));
+
+		// It arrived, it is on the list, and the handset showed it.
+		Assert.Single(service.Active);
+		Assert.Single(_presenter.Presented);
+
+		// And it did not wake anybody.
+		Assert.Empty(_alarm.Started);
+		Assert.False(_alarm.IsSounding);
+	}
+
+	/// <summary>
+	/// The mirror, and the bug it prevents: a yellow reminder arriving
+	/// mid-call must not keep the siren running after the callback it was
+	/// actually ringing for has been answered — with nothing on screen
+	/// explaining why. Only red keeps the alarm going, because only red
+	/// starts it.
+	/// </summary>
+	[Fact]
+	public async Task AnOutstandingYellowAlertDoesNotKeepTheAlarmGoing()
+	{
+		using var service = Build();
+		await service.HandlePushAsync(Alerts.New(7));
+		await service.HandlePushAsync(Alerts.New(8, level: HandAlert.LevelYellow));
+
+		Assert.Single(_alarm.Started);
+
+		await service.AcknowledgeAsync(service.Active.First(a => a.Id == 7));
+
+		Assert.Equal(1, _alarm.StopCount);
+
+		// The yellow card is still there and still unanswered. It is
+		// simply not a reason for a siren.
+		Assert.Contains(service.Active, a => a.Id == 8 && !a.IsSettled);
 	}
 
 	/// <summary>
@@ -250,6 +324,10 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAsync(service.Active.First(a => a.Id == 8));
 		Assert.Equal(1, _alarm.StopCount);
+
+		// Both cards are still on screen, and the alarm is off. The alarm
+		// counts what is outstanding, not what is listed.
+		Assert.Equal(2, service.Active.Count);
 	}
 
 	/// <summary>
@@ -266,7 +344,10 @@ public sealed class AlertServiceTests
 		_reach.PendingAlerts = ReachResult<IReadOnlyList<HandAlert>>.Ok([Alerts.New(7)]);
 		await service.RefreshAsync();
 
-		Assert.Empty(service.Active);
+		// The one card is the acknowledged one, still on screen; what must
+		// not happen is a second copy admitted beside it, alarming again.
+		Assert.Single(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
 		Assert.Single(_alarm.Started);
 	}
 
@@ -280,6 +361,8 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAllAsync();
 
+		// Acknowledge all is the other thing: nobody takes on three jobs by
+		// pressing one button, so it clears the screen as its name says.
 		Assert.Empty(service.Active);
 		Assert.Equal([7L, 8L, 9L], _reach.Acknowledged.Order());
 		Assert.Equal(1, _alarm.StopCount);
@@ -307,7 +390,7 @@ public sealed class AlertServiceTests
 
 		await service.AcknowledgeAsync(service.Active[0]);
 
-		Assert.Empty(service.Active);
+		Assert.True(service.Active[0].AcknowledgedHere);
 		Assert.Equal(1, _alarm.StopCount);
 	}
 
@@ -396,18 +479,20 @@ public sealed class AlertServiceTests
 	// ── Polling ───────────────────────────────────────────────────────
 
 	/// <summary>
-	/// Off duty is the responder saying stop. The handset keeps its token;
-	/// it just stops asking and stops making noise.
+	/// <b>Meeting mode does not stop the poll.</b> That is the whole
+	/// difference from the off-duty switch it replaced: off duty meant a
+	/// handset had quietly left the rota, and this means only that the
+	/// room does not hear it.
 	/// </summary>
 	[Fact]
-	public async Task DoesNotPollWhenOffDuty()
+	public async Task StillPollsWhileInAMeeting()
 	{
-		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", OnDuty = false };
+		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", InMeeting = true };
 		using var service = Build();
 
 		await service.RefreshAsync();
 
-		Assert.Equal(0, _reach.Polls);
+		Assert.Equal(1, _reach.Polls);
 	}
 
 	/// <summary>
@@ -570,8 +655,14 @@ public sealed class AlertServiceTests
 			{
 				PendingAlerts = ReachResult<IReadOnlyList<HandAlert>>.Fail(failure, string.Empty),
 			};
+			var dispatcher = new InlineDispatcher();
 			using var service = new AlertService(
-				reach, new FakeConfigurationService { DeviceToken = "abc" }, new FakeAlarm(), new FakePresenter(), new InlineDispatcher());
+				reach,
+				new FakeConfigurationService { DeviceToken = "abc" },
+				new FakeAlarm(),
+				new FakePresenter(),
+				dispatcher,
+				new AlertHistory(new InMemoryAlertHistoryStore(), dispatcher));
 			service.AuthenticationLost += (_, e) => reasons.Add(e.Reason);
 
 			await service.RefreshAsync();

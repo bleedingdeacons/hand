@@ -48,7 +48,7 @@ internal sealed class StubHttpMessageHandler(
 /// </summary>
 internal sealed class FakeConfigurationService : IConfigurationService
 {
-	public ReachConfiguration Reach { get; set; } = new() { BaseUrl = "https://example.test/", PollSeconds = 20, OnDuty = true };
+	public ReachConfiguration Reach { get; set; } = new() { BaseUrl = "https://example.test/", PollSeconds = 20 };
 
 	public string DeviceToken { get; set; } = string.Empty;
 
@@ -113,9 +113,13 @@ internal sealed class FakeAlarm : IAlertAlarm
 
 	public bool IsSounding { get; private set; }
 
-	public Task StartAsync(HandAlert alert)
+	/// <summary>Whether each start was asked for silently, in order.</summary>
+	public List<bool> StartedSilently { get; } = [];
+
+	public Task StartAsync(HandAlert alert, bool silent = false)
 	{
 		Started.Add(alert);
+		StartedSilently.Add(silent);
 		IsSounding = true;
 		return Task.CompletedTask;
 	}
@@ -142,8 +146,13 @@ internal sealed class FakePresenter : IPlatformAlertPresenter
 
 	public Task<bool> RequestPermissionsAsync() => Task.FromResult(true);
 
-	public Task PresentAsync(HandAlert alert)
+	/// <summary>Whether each notification was posted silently, in order.</summary>
+	public List<bool> PresentedSilently { get; } = [];
+
+	public Task PresentAsync(HandAlert alert, bool silent = false)
 	{
+		PresentedSilently.Add(silent);
+
 		if (ThrowOnPresent)
 		{
 			throw new InvalidOperationException("no notification permission");
@@ -265,22 +274,177 @@ internal sealed class FakeReachClient : IReachClient
 		UnreadableReports++;
 		return Task.FromResult(ReachResult<bool>.Ok(true));
 	}
+
+	public ReachResult<IReadOnlyList<HandMember>> Members { get; set; } =
+		ReachResult<IReadOnlyList<HandMember>>.Ok([]);
+
+	public ReachResult<IReadOnlyList<HandCommittee>> Committees { get; set; } =
+		ReachResult<IReadOnlyList<HandCommittee>>.Ok([]);
+
+	public ReachResult<bool> ReplyResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	public ReachResult<bool> ResendResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	public ReachResult<bool> SendResult { get; set; } = ReachResult<bool>.Ok(true);
+
+	/// <summary>Alert id and body of every reply sent, in order.</summary>
+	public List<(long AlertId, string Body)> Replies { get; } = [];
+
+	/// <summary>The alerts passed back to the rota, in order.</summary>
+	public List<long> Resent { get; } = [];
+
+	/// <summary>The last search term the member directory was asked for.</summary>
+	public string LastSearch { get; private set; } = string.Empty;
+
+	public Task<ReachResult<IReadOnlyList<HandMember>>> GetMembersAsync(
+		string token, string search, int page, CancellationToken cancellationToken)
+	{
+		LastSearch = search;
+		return Task.FromResult(Members);
+	}
+
+	public Task<ReachResult<IReadOnlyList<HandCommittee>>> GetCommitteesAsync(
+		string token, CancellationToken cancellationToken) =>
+		Task.FromResult(Committees);
+
+	public Task<ReachResult<bool>> SendAlertAsync(
+		string token,
+		string subject,
+		string body,
+		string level,
+		string response,
+		long memberId,
+		string committeeSlug,
+		CancellationToken cancellationToken)
+	{
+		Sent.Add((subject, body, level, response, memberId, committeeSlug));
+		return Task.FromResult(SendResult);
+	}
+
+	/// <summary>Everything raised from this handset, in order.</summary>
+	public List<(string Subject, string Body, string Level, string Response, long MemberId, string Committee)> Sent { get; } = [];
+
+	public Task<ReachResult<bool>> ReplyAsync(
+		string token, long alertId, string body, CancellationToken cancellationToken)
+	{
+		Replies.Add((alertId, body));
+		return Task.FromResult(ReplyResult);
+	}
+
+	public Task<ReachResult<bool>> ResendAsync(string token, long alertId, CancellationToken cancellationToken)
+	{
+		Resent.Add(alertId);
+		return Task.FromResult(ResendResult);
+	}
+}
+
+/// <summary>
+/// Holds the history document in memory instead of on disk.
+///
+/// <para>Deliberately a store rather than a fake <c>IAlertHistory</c>:
+/// the tests that use it are about what the alert loop records, and a
+/// stubbed history would let them pass while the real one wrote nothing.
+/// This keeps the actual <c>AlertHistory</c> in the path, including its
+/// JSON round trip.</para>
+/// </summary>
+internal sealed class InMemoryAlertHistoryStore : IAlertHistoryStore
+{
+	public string Contents { get; set; } = string.Empty;
+
+	public int Writes { get; private set; }
+
+	public Task<string> ReadAsync() => Task.FromResult(Contents);
+
+	public Task WriteAsync(string contents)
+	{
+		Contents = contents;
+		Writes++;
+
+		return Task.CompletedTask;
+	}
+}
+
+/// <summary>A store that cannot be read or written. See AlertHistory.</summary>
+internal sealed class BrokenAlertHistoryStore : IAlertHistoryStore
+{
+	public Task<string> ReadAsync() => throw new IOException("no");
+
+	public Task WriteAsync(string contents) => throw new IOException("no");
 }
 
 /// <summary>Shorthand for building alerts in tests.</summary>
 internal static class Alerts
 {
-	public static HandAlert New(long id = 1, string kind = "shift_uncovered", long expiresAt = 0) =>
+	/// <summary>
+	/// An alert of the kind a responder has to deal with.
+	///
+	/// <para><b>Red by default, and that is not a shortcut.</b> Most of
+	/// this suite is about a handset ringing, being silenced and being
+	/// answered, and only red does any of that — yellow is a notification
+	/// that can be missed. A fixture that defaulted to yellow would leave
+	/// every one of those tests asserting against an alert that was never
+	/// going to alarm.</para>
+	/// </summary>
+	public static HandAlert New(
+		long id = 1,
+		string kind = "shift_uncovered",
+		long expiresAt = 0,
+		string messageUuid = "",
+		string level = HandAlert.LevelRed,
+		string response = HandAlert.ResponseFirst) =>
 		new()
 		{
 			Id = id,
 			Kind = kind,
 			Source = "trusted",
-			Priority = "normal",
+			Priority = level == HandAlert.LevelRed ? "urgent" : "normal",
+			Level = level,
+			Response = response,
 			Title = "Shift uncovered",
 			Body = "Nobody is on the helpline.",
 			Reference = $"SHIFT-{id}",
 			CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
 			ExpiresAt = expiresAt,
+			MessageUuid = messageUuid,
 		};
+
+	/// <summary>
+	/// The notice Reach sends to everybody else when one handset
+	/// acknowledges: the same shape as any other alert, carrying the
+	/// message it reports on and who answered as payload properties.
+	///
+	/// <para><b>Blue and informational, because that is how Reach raises
+	/// it</b> — see <c>AcknowledgementNotifier</c>. Nothing here
+	/// recognises the kind as special any more: it is quiet because it is
+	/// blue and it offers Close because nobody has to take it on, exactly
+	/// as any other alert with those two fields would.</para>
+	/// </summary>
+	public static HandAlert Notice(
+		long id,
+		string aboutMessageUuid,
+		string by = "Jo B",
+		long expiresAt = 0)
+	{
+		var notice = New(
+			id,
+			HandAlert.KindMessageAcknowledged,
+			expiresAt,
+			$"notice-{id}",
+			HandAlert.LevelBlue,
+			HandAlert.ResponseNone);
+		notice.Title = $"{by} acknowledged";
+		notice.Body = "Shift uncovered";
+
+		if (aboutMessageUuid.Length > 0)
+		{
+			notice.Payload[HandAlert.PayloadAckMessageUuid] = aboutMessageUuid;
+		}
+
+		if (by.Length > 0)
+		{
+			notice.Payload[HandAlert.PayloadAckResponder] = by;
+		}
+
+		return notice;
+	}
 }
