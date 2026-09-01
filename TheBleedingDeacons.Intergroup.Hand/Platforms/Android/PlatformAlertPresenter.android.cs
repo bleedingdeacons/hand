@@ -135,10 +135,30 @@ public sealed partial class PlatformAlertPresenter
 		}
 	}
 
-	private partial Task PlatformPresentAsync(HandAlert alert)
+	private partial Task PlatformPresentAsync(HandAlert alert, bool silent)
 	{
+		// Three levels, three channels, three notifications. Only red
+		// falls through to the alarm treatment below — the other two are
+		// notifications a responder can miss, which is the difference the
+		// level exists to express.
+		//
+		// Meeting mode doubles that to six: each level has a silent twin,
+		// because Android fixes a channel's sound when it is created and
+		// will not let it be changed. Everything else about the
+		// notification is identical — see QuietChannelId.
+		if (alert.IsQuiet)
+		{
+			return PresentQuietly(alert, silent);
+		}
+
+		if (alert.IsWarning)
+		{
+			return PresentWarning(alert, silent);
+		}
+
 		var context = AndroidApp.Context;
-		EnsureChannel(context);
+		EnsureChannel(context, silent);
+		var channelId = silent ? QuietChannelId : ChannelId;
 
 		// Tapping the notification opens the app on the alert list.
 		var intent = new Intent(context, typeof(MainActivity));
@@ -156,7 +176,7 @@ public sealed partial class PlatformAlertPresenter
 		// builder, so a chain is a run of possible null dereferences that
 		// says nothing useful. The builder never actually returns null — it
 		// returns itself.
-		var builder = new NotificationCompat.Builder(context, ChannelId);
+		var builder = new NotificationCompat.Builder(context, channelId);
 		builder.SetContentTitle(alert.Title);
 		builder.SetContentText(alert.Body);
 		builder.SetStyle(new NotificationCompat.BigTextStyle().BigText(alert.Body));
@@ -192,7 +212,7 @@ public sealed partial class PlatformAlertPresenter
 		// rather than a guarantee, and the difference is what
 		// LockScreenPrivacy exists to report.
 		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
-		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent, channelId));
 
 		// The full-screen intent is what turns a notification into an
 		// incoming call: the system launches the activity over the lock
@@ -215,6 +235,112 @@ public sealed partial class PlatformAlertPresenter
 			// Thrown when POST_NOTIFICATIONS was declined. The in-app alarm
 			// still sounds if the app is running; there is nothing more to do
 			// from here.
+			Log.Warning(ex, "Notification for alert {AlertId} could not be posted", alert.Id);
+		}
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Post something that is information rather than an emergency.
+	///
+	/// <para><b>A separate channel, because a channel's importance and
+	/// sound are fixed when it is created.</b> Android ignores every
+	/// later attempt to change them — deliberately, so an app cannot
+	/// override a user's choice — so a quiet notification posted to the
+	/// alarm channel is not quiet at all: it arrives at maximum
+	/// importance with the looping alarm tone, which is the entire thing
+	/// this is avoiding. There is no way to do it on one channel.</para>
+	///
+	/// <para>Auto-cancelled and not ongoing, unlike an alert: this is a
+	/// message to be read and swiped away, and there is nothing here that
+	/// has to stay in the tray until it is dealt with.</para>
+	///
+	/// <para>Still redacted on the lock screen. A notice quotes the
+	/// original message's own title so it says which message it is about,
+	/// which means it carries the same freehand text the alert did and
+	/// deserves the same treatment.</para>
+	/// </summary>
+	private static Task PresentQuietly(HandAlert alert, bool silent)
+	{
+		EnsureNoticeChannel(AndroidApp.Context, silent);
+
+		return PresentWithoutTakingOver(
+			alert,
+			silent ? QuietNoticeChannelId : NoticeChannelId,
+			NotificationCompat.CategoryStatus);
+	}
+
+	/// <summary>
+	/// Post the middle rung: it sounds and shows a heads-up banner, and
+	/// then behaves like a message.
+	///
+	/// <para>The same notification as a notice — auto-cancelled, not
+	/// ongoing, no full-screen intent — on a channel whose importance is
+	/// High rather than Default. That one difference is the whole of
+	/// yellow: it gets attention, and it does not demand the screen or
+	/// keep ringing. See <see cref="EnsureWarningChannel"/>.</para>
+	///
+	/// <para>The category is Message rather than Status because a yellow
+	/// alert is addressed to the responder, where a notice reports on
+	/// something. It is what Android uses to rank and group.</para>
+	/// </summary>
+	private static Task PresentWarning(HandAlert alert, bool silent)
+	{
+		EnsureWarningChannel(AndroidApp.Context, silent);
+
+		return PresentWithoutTakingOver(
+			alert,
+			silent ? QuietWarningChannelId : WarningChannelId,
+			NotificationCompat.CategoryMessage);
+	}
+
+	/// <summary>
+	/// The notification both non-alarm levels post, differing only in
+	/// their channel and category.
+	///
+	/// <para>Shared rather than written twice because the parts that must
+	/// not drift are the ones neither level varies: the redacted public
+	/// version, the content intent, and the absence of a full-screen
+	/// intent. A copy would be a second place for the lock-screen
+	/// treatment to be forgotten.</para>
+	/// </summary>
+	private static Task PresentWithoutTakingOver(HandAlert alert, string channelId, string category)
+	{
+		var context = AndroidApp.Context;
+
+		var intent = new Intent(context, typeof(MainActivity));
+		intent.SetFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+		intent.PutExtra("alert_id", alert.Id);
+
+		var contentIntent = PendingIntent.GetActivity(
+			context,
+			NotificationId(alert.Id),
+			intent,
+			PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+
+		var builder = new NotificationCompat.Builder(context, channelId);
+		builder.SetContentTitle(alert.Title);
+		builder.SetContentText(alert.Body);
+		builder.SetStyle(new NotificationCompat.BigTextStyle().BigText(alert.Body));
+		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
+		builder.SetAutoCancel(true);
+		builder.SetOngoing(false);
+		builder.SetCategory(category);
+		builder.SetPriority(
+			category == NotificationCompat.CategoryMessage
+				? NotificationCompat.PriorityHigh
+				: NotificationCompat.PriorityDefault);
+		builder.SetContentIntent(contentIntent);
+		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent, channelId));
+
+		try
+		{
+			NotificationManagerCompat.From(context)?.Notify(NotificationId(alert.Id), builder.Build());
+		}
+		catch (Exception ex)
+		{
 			Log.Warning(ex, "Notification for alert {AlertId} could not be posted", alert.Id);
 		}
 
@@ -271,9 +397,13 @@ public sealed partial class PlatformAlertPresenter
 	/// and treats it as "no public version", which degrades to Android's own
 	/// "Contents hidden" line rather than to an unredacted notification.
 	/// </remarks>
-	private static Notification? RedactedVersion(Context context, HandAlert alert, PendingIntent? contentIntent)
+	private static Notification? RedactedVersion(
+		Context context,
+		HandAlert alert,
+		PendingIntent? contentIntent,
+		string channelId)
 	{
-		var builder = new NotificationCompat.Builder(context, ChannelId);
+		var builder = new NotificationCompat.Builder(context, channelId);
 		builder.SetContentTitle(alert.LockScreenTitle);
 		builder.SetContentText(HandAlert.LockScreenBody);
 		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
@@ -284,7 +414,16 @@ public sealed partial class PlatformAlertPresenter
 		return builder.Build();
 	}
 
-	internal static void EnsureChannel(Context context)
+	/// <summary>
+	/// Create the notices channel if it is not there.
+	///
+	/// <para>Default importance and the system's own notification sound:
+	/// it should appear and be readable, not demand anything. Vibration,
+	/// lights and the DND bypass are all deliberately absent — every one
+	/// of them exists on the alert channel to wake somebody, and nothing
+	/// on this channel is worth waking anybody for.</para>
+	/// </summary>
+	internal static void EnsureNoticeChannel(Context context, bool silent = false)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
 		{
@@ -292,14 +431,94 @@ public sealed partial class PlatformAlertPresenter
 		}
 
 		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
-		if (manager is null || manager.GetNotificationChannel(ChannelId) is not null)
+		var id = silent ? QuietNoticeChannelId : NoticeChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
 		{
 			return;
 		}
 
 		var channel = new NotificationChannel(
-			ChannelId,
-			"Helpline alerts",
+			id,
+			silent ? "Helpline updates (in a meeting)" : "Helpline updates",
+			NotificationImportance.Default)
+		{
+			Description = "News about alerts somebody else has already answered. These will not wake you.",
+			LockscreenVisibility = NotificationVisibility.Private,
+		};
+
+		// A Default-importance channel still chimes unless told not to.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+		}
+
+		manager.CreateNotificationChannel(channel);
+	}
+
+	/// <summary>
+	/// The middle rung's channel: it makes a noise and shows a heads-up
+	/// banner, and stops there.
+	///
+	/// <para>High importance, so it appears over whatever is on screen
+	/// and sounds — that is what separates it from a notice. But the
+	/// alert channel's siren, its alarm audio usage and its Do Not
+	/// Disturb bypass are all absent: those exist to wake somebody who is
+	/// asleep, and yellow is explicitly the level that may be missed and
+	/// caught up with. The notification itself supplies the rest of the
+	/// difference — no full-screen intent, and it can be swiped
+	/// away.</para>
+	/// </summary>
+	internal static void EnsureWarningChannel(Context context, bool silent = false)
+	{
+		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
+		{
+			return;
+		}
+
+		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
+		var id = silent ? QuietWarningChannelId : WarningChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
+		{
+			return;
+		}
+
+		var channel = new NotificationChannel(
+			id,
+			silent ? "Helpline messages (in a meeting)" : "Helpline messages",
+			NotificationImportance.High)
+		{
+			Description = "Alerts that should get your attention but will not ring like a call.",
+			LockscreenVisibility = NotificationVisibility.Private,
+		};
+
+		channel.EnableVibration(true);
+
+		// Meeting mode: the banner and the buzz stay, the tone goes.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+		}
+
+		manager.CreateNotificationChannel(channel);
+	}
+
+	internal static void EnsureChannel(Context context, bool silent = false)
+	{
+		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
+		{
+			return;
+		}
+
+		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
+		var id = silent ? QuietChannelId : ChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
+		{
+			return;
+		}
+
+		var channel = new NotificationChannel(
+			id,
+			silent ? "Helpline alerts (in a meeting)" : "Helpline alerts",
 			NotificationImportance.High)
 		{
 			Description = "Alerts for the telephone-responder rota. These are meant to wake you.",
@@ -319,6 +538,19 @@ public sealed partial class PlatformAlertPresenter
 		channel.EnableVibration(true);
 		channel.EnableLights(true);
 		channel.SetBypassDnd(true);
+
+		// <b>Meeting mode stops here, and keeps everything else.</b>
+		// Importance stays High so a red alert still takes the screen over
+		// with its full-screen intent, vibration and lights stay on, and
+		// the Do Not Disturb bypass above is untouched — a responder who
+		// silenced the room did not ask to stop being alerted. Only the
+		// siren is absent.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+			manager.CreateNotificationChannel(channel);
+			return;
+		}
 
 		var soundUri = Android.Net.Uri.Parse(
 			$"{ContentResolver.SchemeAndroidResource}://{context.PackageName}/{Resource.Raw.reach_alert}");

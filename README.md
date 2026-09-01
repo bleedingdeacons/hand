@@ -30,6 +30,98 @@ Reach before any push is attempted, and every handset polls as well as
 listening — so a phone in a tunnel catches up when it surfaces, and a
 handset whose FCM token has silently rotated still gets its alerts.
 
+### Levels
+
+Every alert arrives at one of three levels, which is both how loud the
+handset is about it and what colour its card is — so a responder can
+tell a callback from a reminder across a room, before reading a word.
+
+| Level | Card | On the handset |
+| --- | --- | --- |
+| **Red** | Red | Takes the screen over with a full-screen intent and rings like an incoming call until somebody answers. The looping siren, the alarm category, the Do Not Disturb bypass. |
+| **Yellow** | Amber | A heads-up notification with a sound. It gets attention and it can be missed — no siren, no screen takeover, and it can be swiped away. |
+| **Blue** | Blue | The tray, at ordinary importance. Reminders and information; it wakes nobody. |
+
+**Only red sounds the alarm**, and only red keeps it going. A yellow
+reminder arriving mid-call must not leave the siren running after the
+callback it was actually ringing for has been answered.
+
+Three Android channels — `reach_alerts`, `reach_warnings`,
+`reach_notices` — because a channel's importance and sound are fixed
+when it is created and cannot be changed afterwards. A level added later
+has to be a new channel, not an edit to one of these.
+
+**An alert with no level falls back to its priority.** A Reach that
+predates the level sends only `normal`/`urgent`, and reading its absent
+level as "call it yellow" would demote every urgent alert that server
+raises — on the one route where the handset is newer than the server,
+which is the ordinary way round for an app that updates itself.
+
+### Acknowledge, or Close
+
+An alert either has to be taken on or it does not, and its button says
+which.
+
+**Acknowledge** means "I have this". The first responder to press it
+takes the job: Reach tells everybody else who answered and the alert
+comes off their handsets.
+
+**Close** means there was nothing to take on. The message is
+information — a reminder, an announcement, the notice saying somebody
+else already answered — so every handset reads and closes its own copy,
+and closing it leaves it on everybody else's screen.
+
+Closing still tells Reach. That is how the server learns this handset
+has dealt with its own copy, and what stops the next poll handing it
+straight back.
+
+The two are independent of the level: a red alert can be informational
+(a drill everybody must see) and a blue one can still be somebody's job.
+
+### When somebody else answers first
+
+A broadcast rings every certified handset at once, and whoever answers
+silences only their own. So Reach sends a second message to everybody
+else it went to, saying who picked it up, and Hand does three things
+with it.
+
+It **never alarms.** Waking a second responder at three in the morning
+to tell them the first one answered would be worse than saying nothing.
+None of that is special-cased, though: Reach raises the notice as
+**blue** and **Close**, and Hand reads those two fields exactly as it
+reads them on any other alert. What used to be this one hard-coded
+exception is now something anything can ask for.
+
+It **takes the message off this handset**, where somebody was meant to
+take it on. Not marks it — removes it.
+An answered message is over: the responder who took it has the job, and
+leaving everybody else a card to dismiss one by one is work invented for
+no reason. Reach stops serving that message at the same moment, which is
+what keeps the next poll from handing it straight back. Matched on the
+message uuid rather than the alert id: one message to a responder
+holding two handsets is two alerts with two ids, and the uuid is the
+only thing the copies share.
+
+If that was the last outstanding alert, **the alarm stops** — a handset
+left ringing about a job somebody else has taken is the thing this
+exists to remove.
+
+The notice itself stays, with a **Close** button. It is the whole of
+what this handset still needs to know.
+
+### Acknowledging keeps your own card
+
+The handset that answers is the exception: its card stays on screen,
+says "Acknowledged by you", and its button becomes Close.
+
+Acknowledging used to remove it, which took the reference and the Show
+contact button away at exactly the moment they started to matter — the
+responder has just accepted a call and now has to make it. So
+Acknowledge silences the alarm, drops the tray notification and tells
+Reach; the second press closes the card. **Acknowledge all** is the
+other thing and still clears the screen: nobody takes on five jobs by
+pressing one button.
+
 ## Known gaps
 
 **iOS and Mac Catalyst do not receive push yet.** `PushRegistrar` on those

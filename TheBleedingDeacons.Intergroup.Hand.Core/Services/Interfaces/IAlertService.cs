@@ -32,6 +32,21 @@ public interface IAlertService
 	/// <summary>Stop polling and silence any alarm.</summary>
 	Task StopAsync();
 
+	/// <summary>
+	/// Silence an alarm that is already sounding, and change nothing
+	/// else.
+	///
+	/// <para>What meeting mode calls when it is switched on mid-alarm. A
+	/// responder reaching for it in a room full of people wants the noise
+	/// to stop now, not at the next alert.</para>
+	///
+	/// <para><b>Deliberately not StopAsync.</b> That cancels the poll and
+	/// takes the handset off the rota, which is exactly what meeting mode
+	/// exists not to do. This stops the sound; the alert stays
+	/// outstanding, still listed, still needing an answer.</para>
+	/// </summary>
+	Task SilenceAsync();
+
 	/// <summary>Poll once, now — on resume, or on pull-to-refresh.</summary>
 	Task RefreshAsync();
 
@@ -75,6 +90,38 @@ public interface IAlertService
 	/// asked for tells a regulator nothing useful.</para>
 	/// </summary>
 	Task ShowContactAsync(HandAlert alert);
+
+	/// <summary>
+	/// Send a free-text reply about an alert, by its id.
+	///
+	/// <para><b>Takes an id rather than an alert, because the card is
+	/// frequently gone.</b> The case this exists for is a responder
+	/// replying after somebody else answered — at which point Reach has
+	/// stopped serving the message and Hand has removed every local copy,
+	/// so the only thing left is the history entry and its id. The server
+	/// authorises on whether the alert could have been sent here, not on
+	/// who acknowledged it, so the reply lands.</para>
+	///
+	/// <para>Replying settles nothing. It is not a second person taking
+	/// the job on, and an alert still outstanding stays outstanding.</para>
+	/// </summary>
+	/// <returns>Whether Reach accepted it.</returns>
+	Task<bool> ReplyAsync(long alertId, string body);
+
+	/// <summary>
+	/// Put a job this handset acknowledged back out to the rota.
+	///
+	/// <para>For the responder who took a call and then could not do it.
+	/// Reach raises it again as a genuinely new message, to the people the
+	/// original went to, carrying its contact details — so whoever picks
+	/// it up can still ring the caller.</para>
+	///
+	/// <para>Unlike <see cref="ReplyAsync"/> this <em>does</em> finish the
+	/// alert here: the job is no longer this responder's, so the card goes
+	/// and the history entry says it was passed on.</para>
+	/// </summary>
+	/// <returns>Whether Reach accepted it.</returns>
+	Task<bool> ResendAsync(HandAlert alert);
 }
 
 /// <summary>

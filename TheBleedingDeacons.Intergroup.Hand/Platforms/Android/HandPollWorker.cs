@@ -143,12 +143,11 @@ public sealed class HandPollWorker : Worker
 
 		var settings = configuration.GetReachConfiguration();
 
-		// Off duty is the responder saying stop. The handset keeps its
-		// token; it simply stops asking and stops making noise.
-		if (!settings.OnDuty)
-		{
-			return Result.InvokeSuccess()!;
-		}
+		// <b>No duty gate any more.</b> This used to stop the background
+		// poll when the responder was off duty, which meant a handset that
+		// had quietly left the rota. Meeting mode replaced it and changes
+		// only the volume — see ReachConfiguration.InMeeting — so the poll
+		// always runs and the noise is decided per alert.
 
 		// Polling turned off in Settings. The schedule is left in place
 		// rather than cancelled, so turning it back on takes effect at the

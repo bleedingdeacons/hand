@@ -15,15 +15,18 @@ public sealed partial class AlertsViewModel : ObservableObject
 	private readonly IAlertService _alerts;
 	private readonly IDeviceAuthService _auth;
 	private readonly IConfigurationService _configuration;
+	private readonly IWindowVisibility _window;
 
 	public AlertsViewModel(
 		IAlertService alerts,
 		IDeviceAuthService auth,
-		IConfigurationService configuration)
+		IConfigurationService configuration,
+		IWindowVisibility window)
 	{
 		_alerts = alerts;
 		_auth = auth;
 		_configuration = configuration;
+		_window = window;
 
 		Alerts.CollectionChanged += (_, _) =>
 		{
@@ -32,7 +35,7 @@ public sealed partial class AlertsViewModel : ObservableObject
 			OnPropertyChanged(nameof(StatusLine));
 		};
 
-		OnDuty = _configuration.GetReachConfiguration().OnDuty;
+		InMeeting = _configuration.GetReachConfiguration().InMeeting;
 	}
 
 	public ObservableCollection<HandAlert> Alerts => _alerts.Active;
@@ -50,18 +53,28 @@ public sealed partial class AlertsViewModel : ObservableObject
 	/// </summary>
 	public string StatusLine => Alerts.Count switch
 	{
-		0 => OnDuty ? "On duty — nothing outstanding" : "Off duty",
+		0 => InMeeting ? "In a meeting — nothing outstanding" : "Nothing outstanding",
 		1 => "1 alert waiting",
 		var n => $"{n} alerts waiting",
 	};
 
+	/// <summary>
+	/// Whether the handset is in a meeting: alerting as normal, silently.
+	///
+	/// <para><b>This replaced an on/off duty switch, and it is not the
+	/// same control.</b> Off duty stopped the poll — the handset left the
+	/// rota and nobody was told. This changes the volume and nothing
+	/// else: the poll runs, the card is listed, the phone still vibrates,
+	/// and a red alert still takes the screen. See
+	/// <see cref="ReachConfiguration.InMeeting"/>.</para>
+	/// </summary>
 	[ObservableProperty]
-	public partial bool OnDuty { get; set; }
+	public partial bool InMeeting { get; set; }
 
 	[ObservableProperty]
 	public partial bool IsRefreshing { get; set; }
 
-	partial void OnOnDutyChanged(bool value)
+	partial void OnInMeetingChanged(bool value)
 	{
 		OnPropertyChanged(nameof(StatusLine));
 
@@ -70,24 +83,25 @@ public sealed partial class AlertsViewModel : ObservableObject
 			try
 			{
 				var configuration = _configuration.GetReachConfiguration();
-				configuration.OnDuty = value;
+				configuration.InMeeting = value;
 				await _configuration.SaveReachConfigurationAsync(configuration).ConfigureAwait(false);
 
-				// Going off duty silences an alarm that is already sounding.
-				// A responder switching off is asking for quiet now, not at
-				// the next alert.
+				// Switching on silences an alarm that is already sounding.
+				// A responder reaching for this in a meeting wants quiet
+				// now, not at the next alert — and the alert itself stays
+				// on screen, outstanding, exactly as it was.
+				//
+				// <b>Nothing starts or stops the poll here any more.</b>
+				// That is what the old duty switch did, and it is the whole
+				// difference: this handset never leaves the rota.
 				if (value)
 				{
-					await _alerts.StartAsync().ConfigureAwait(false);
-				}
-				else
-				{
-					await _alerts.StopAsync().ConfigureAwait(false);
+					await _alerts.SilenceAsync().ConfigureAwait(false);
 				}
 			}
 			catch (Exception ex)
 			{
-				Log.Error(ex, "Duty state could not be changed");
+				Log.Error(ex, "Meeting mode could not be changed");
 			}
 		});
 	}
@@ -112,6 +126,108 @@ public sealed partial class AlertsViewModel : ObservableObject
 		}
 
 		await _alerts.ShowContactAsync(alert).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Say something back about an alert.
+	///
+	/// <para>The prompt is raised here rather than in the page because
+	/// every other command on this screen is, and a reply is one step:
+	/// there is no half-filled state worth a page of its own.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task ReplyAsync(HandAlert? alert)
+	{
+		// The notice check is here as well as on the button, because the
+		// button being hidden is a rendering decision and this is the
+		// rule. The server refuses either way; not prompting for words it
+		// will throw away is the point.
+		if (alert is null || !alert.CanReply)
+		{
+			return;
+		}
+
+		try
+		{
+			var body = await Shell.Current.DisplayPromptAsync(
+				"Reply",
+				"This goes to whoever sent it, and onto a lock screen. No names or numbers.",
+				accept: "Send",
+				cancel: "Cancel",
+				maxLength: 1000);
+
+			if (!string.IsNullOrWhiteSpace(body))
+			{
+				await _alerts.ReplyAsync(alert.Id, body).ConfigureAwait(false);
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "The reply could not be sent");
+		}
+	}
+
+	/// <summary>
+	/// Put a job back to the rota.
+	///
+	/// <para>Confirmed, because it rings phones — the responder is asking
+	/// for a handful of alarms to go off, and a mis-tap on a card they
+	/// were reaching past should not do that. Disabled while it runs so a
+	/// double tap cannot raise two.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task PassBackAsync(HandAlert? alert)
+	{
+		if (alert is null || IsPassingBack)
+		{
+			return;
+		}
+
+		try
+		{
+			var confirmed = await Shell.Current.DisplayAlertAsync(
+				"Pass this back?",
+				"It goes out again to everybody it came to, and their handsets will ring. You will no longer have it.",
+				"Pass back",
+				"Keep it");
+
+			if (!confirmed)
+			{
+				return;
+			}
+
+			IsPassingBack = true;
+			await _alerts.ResendAsync(alert).ConfigureAwait(false);
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "The alert could not be passed back");
+		}
+		finally
+		{
+			IsPassingBack = false;
+		}
+	}
+
+	[ObservableProperty]
+	public partial bool IsPassingBack { get; set; }
+
+	/// <summary>
+	/// Whether to offer the compose screen.
+	///
+	/// <para>Answers what the <em>server</em> supports, not what this
+	/// responder may do — every enrolled handset may send. A Reach without
+	/// these routes says nothing, which reads as false, so the button is
+	/// absent rather than answering 404. See
+	/// <see cref="DeviceSession.CanSend"/>.</para>
+	/// </summary>
+	public bool CanSend => _auth.Current?.CanSend ?? false;
+
+	/// <summary>Write a message to a member or a committee.</summary>
+	[RelayCommand]
+	private static async Task ComposeAsync()
+	{
+		await Shell.Current.GoToAsync("compose").ConfigureAwait(false);
 	}
 
 	[RelayCommand]
@@ -144,6 +260,47 @@ public sealed partial class AlertsViewModel : ObservableObject
 		await Shell.Current.GoToAsync("settings").ConfigureAwait(false);
 	}
 
+	/// <summary>
+	/// Whether to offer the Hide button. False on the Apple heads, which
+	/// will not let an app put itself away — see
+	/// <see cref="IWindowVisibility"/>. A button that did nothing would be
+	/// worse than no button.
+	/// </summary>
+	public bool CanHide => _window.CanHide;
+
+	/// <summary>
+	/// Put Hand out of the way without taking the handset off duty.
+	///
+	/// <para><b>It is not the same as leaving by the back gesture, and
+	/// that is why it is here.</b> This screen is where a duty handset
+	/// sits, and a responder who wants the phone to look like a phone
+	/// again should be able to say so from it — without wondering whether
+	/// what they just pressed also took them off the rota. Nothing about
+	/// this ends the shift: the poll keeps running, the push keeps
+	/// arriving, and the handset still rings.</para>
+	///
+	/// <para>A button of this shape used to be on the settings page,
+	/// directly above Sign out, and was removed because the two looked
+	/// alike and only one of them was harmless. Here there is nothing
+	/// destructive within reach of it.</para>
+	/// </summary>
+	[RelayCommand]
+	private void Hide() => _window.Hide();
+
+	/// <summary>
+	/// What arrived and what became of it.
+	///
+	/// <para>On the duty screen rather than behind settings, and before
+	/// Settings rather than after it: the history is the more likely of
+	/// the two to be wanted, and a responder reaching for it should not
+	/// have to go through a page of switches to find it.</para>
+	/// </summary>
+	[RelayCommand]
+	private static async Task OpenHistoryAsync()
+	{
+		await Shell.Current.GoToAsync("history").ConfigureAwait(false);
+	}
+
 	/// <summary>Re-read anything that can change while the page is away.</summary>
 	public void Refresh()
 	{
@@ -151,5 +308,10 @@ public sealed partial class AlertsViewModel : ObservableObject
 		OnPropertyChanged(nameof(StatusLine));
 		OnPropertyChanged(nameof(HasAlerts));
 		OnPropertyChanged(nameof(IsClear));
+
+		// The session is re-checked at launch and after a sign-in, so what
+		// the server says it supports can have changed while this page was
+		// off screen.
+		OnPropertyChanged(nameof(CanSend));
 	}
 }

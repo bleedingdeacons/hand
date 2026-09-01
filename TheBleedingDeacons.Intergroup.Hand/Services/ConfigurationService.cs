@@ -72,7 +72,13 @@ public sealed class ConfigurationService : IConfigurationService
 	/// </summary>
 	internal const string ReachResolvedBaseUrlKey = "reach_base_url_resolved";
 	private const string ReachPollSecondsKey = "reach_poll_seconds";
-	private const string ReachOnDutyKey = "reach_on_duty";
+	// Deliberately a NEW key rather than a rename of reach_on_duty. The
+	// two mean opposite things — the old one defaulted to true meaning
+	// "alerting", this defaults to false meaning "audible" — so reusing
+	// the key would read every existing handset's "on duty" as "in a
+	// meeting" and silence the whole rota on upgrade. A fresh key means
+	// every handset comes back loud, which is the safe direction.
+	private const string ReachInMeetingKey = "reach_in_meeting";
 	private const string ReachPollEnabledKey = "reach_poll_enabled";
 
 	private readonly IConfiguration _configuration;
@@ -134,7 +140,7 @@ public sealed class ConfigurationService : IConfigurationService
 		{
 			BaseUrl = baseUrl,
 			PollSeconds = pollSeconds > 0 ? pollSeconds : 20,
-			OnDuty = Preferences.Get(ReachOnDutyKey, true),
+			InMeeting = Preferences.Get(ReachInMeetingKey, false),
 			Poll = Preferences.Get(ReachPollEnabledKey, true),
 		}.Normalised();
 
@@ -160,7 +166,7 @@ public sealed class ConfigurationService : IConfigurationService
 		var normalised = configuration.Normalised();
 		Preferences.Set(ReachBaseUrlKey, normalised.BaseUrl);
 		Preferences.Set(ReachPollSecondsKey, normalised.PollSeconds);
-		Preferences.Set(ReachOnDutyKey, normalised.OnDuty);
+		Preferences.Set(ReachInMeetingKey, normalised.InMeeting);
 		Preferences.Set(ReachPollEnabledKey, normalised.Poll);
 
 		return Task.CompletedTask;

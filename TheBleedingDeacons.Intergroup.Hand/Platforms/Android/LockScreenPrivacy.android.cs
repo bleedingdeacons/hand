@@ -63,9 +63,8 @@ public sealed partial class LockScreenPrivacy
 				return LockScreenPrivacyState.Hidden;
 			}
 
-			// 2. The channel's own setting, which beats the global one.
-			var channelVisibility = AlertChannelVisibility(context);
-			if (channelVisibility is NotificationVisibility.Private or NotificationVisibility.Secret)
+			// 2. The channels' own settings, which beat the global one.
+			if (EveryChannelHidesItsContent(context))
 			{
 				return LockScreenPrivacyState.Hidden;
 			}
@@ -84,14 +83,66 @@ public sealed partial class LockScreenPrivacy
 	}
 
 	/// <summary>
-	/// What the alert channel says about its own lock-screen visibility,
-	/// or null when it says nothing.
+	/// Whether every channel an alert can arrive on hides its own
+	/// content.
+	///
+	/// <para><b>Every channel, and the most revealing one decides.</b>
+	/// Alerts arrive on one of three channels depending on their level,
+	/// and a responder can set each independently. Asking only the alert
+	/// channel — which is what this did while there was only one — would
+	/// report a handset as safe while its yellow alerts were legible to
+	/// anyone standing next to it. The report exists to tell an
+	/// intergroup what is readable, so a single channel that shows its
+	/// content is the answer.</para>
+	///
+	/// <para>A channel that has not been created yet, or expresses no
+	/// preference, is not evidence of hiding — it falls through to the
+	/// global setting, which is where an untouched handset is decided.</para>
+	/// </summary>
+	private static bool EveryChannelHidesItsContent(Context context)
+	{
+		string[] channels =
+		[
+			PlatformAlertPresenter.ChannelId,
+			PlatformAlertPresenter.WarningChannelId,
+			PlatformAlertPresenter.NoticeChannelId,
+		];
+
+		var hiding = 0;
+
+		foreach (var channelId in channels)
+		{
+			var visibility = ChannelVisibility(context, channelId);
+
+			if (visibility is null)
+			{
+				// No preference expressed. Not a hiding channel, and not
+				// grounds to call the handset unsafe either.
+				continue;
+			}
+
+			if (visibility is NotificationVisibility.Private or NotificationVisibility.Secret)
+			{
+				hiding++;
+				continue;
+			}
+
+			// One channel showing its content is enough to answer.
+			return false;
+		}
+
+		return hiding > 0;
+	}
+
+	/// <summary>
+	/// What one channel says about its own lock-screen visibility, or
+	/// null when it says nothing.
 	///
 	/// <para>Android returns <c>VISIBILITY_NO_OVERRIDE</c> (-1000) for a
 	/// channel whose owner has expressed no preference, which is the
 	/// ordinary case and must not be read as a preference for showing.</para>
 	/// </summary>
-	private static NotificationVisibility? AlertChannelVisibility(Context context)
+	private static NotificationVisibility? ChannelVisibility(Context context, string channelId)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
 		{
@@ -101,7 +152,7 @@ public sealed partial class LockScreenPrivacy
 		}
 
 		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
-		var channel = manager?.GetNotificationChannel(PlatformAlertPresenter.ChannelId);
+		var channel = manager?.GetNotificationChannel(channelId);
 
 		if (channel is null)
 		{
