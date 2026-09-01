@@ -21,8 +21,7 @@
 		     Last so they win when set; a local build without either keeps the
 		     full set above. Same arrangement as Register. -->
 		<!--
-			HandAndroidOnly sets the SINGULAR TargetFramework, and that one
-			word is what makes a fast debug loop possible.
+			HandAndroidOnly sets the SINGULAR TargetFramework.
 
 			With TargetFrameworks plural — even holding a single value —
 			MSBuild does an outer, dispatching build, and the targets that
@@ -30,29 +29,54 @@
 
 			    error MSB4057: The target "Run" does not exist in the project
 
-			So the only way to get an APK onto a handset was to build one and
-			push it with `adb install`, which in turn needs
-			EmbedAssembliesIntoApk=true — because the default, Fast Deployment,
-			deliberately leaves the managed assemblies OUT of the APK and
-			expects MSBuild's own Install target to push them separately. Skip
-			that step and the app installs, launches, and immediately aborts
-			with "No assemblies found in .../.__override__".
+			Singular makes `-t:Run` and `-t:Install` resolve. Whether you can
+			use them is the next paragraph, and the answer is a qualified no.
 
-			Singular restores `-t:Run`, which builds, installs and launches in
-			one step and uses Fast Deployment. Measured on a one-line change:
+			<b>Fast Deployment is broken on this project. Do not use it.</b>
+			It is the .NET Android default in Debug: the managed assemblies are
+			left OUT of the APK and pushed separately to
+			`files/.__override__`. That would make the loop about eight
+			seconds instead of a minute, and it does build and install — but
+			the 15MB APK it produces has incomplete Material resources, and the
+			app dies on launch before any of our code runs:
 
-			    adb install route, both ABIs      2m06 + 12s install, 95MB apk
-			    adb install route, arm64 only     1m07 + 9s install,  53MB apk
-			    -t:Run with Fast Deployment       8s total,           15MB apk
+			    java.lang.IllegalArgumentException: This component requires that
+			    you specify a valid TextAppearance attribute. Update your app
+			    theme to inherit from Theme.MaterialComponents (or a descendant)
+			      at ShellItemRenderer.OnCreateView → CreateNavigationBar
 
-			The full loop:
+			It survives a clean obj, a forced APK reinstall and a cleared
+			.__override__, so it is not stale state. The same tree built with
+			EmbedAssembliesIntoApk=true runs perfectly, which is what isolates
+			it to the deployment mode rather than to the singular TFM.
 
-			    dotnet build TheBleedingDeacons.Intergroup.Hand -c Debug \
-			      -p:HandAndroidOnly=true -t:Run \
-			      -p:AdbTarget="-s <serial>"
+			<b>It also fails deceptively.</b> On a handset that already has an
+			embedded APK installed, Fast Deployment pushes new assemblies over
+			the old good resources and appears to work — that is how this got
+			merged in the first place, on a device that had been deployed to
+			the old way minutes earlier. The mixed state then rots into
+			"TypeLoadException: Could not resolve type ... in assembly
+			TheBleedingDeacons.Intergroup.Hand.Core" on the next deploy.
+			Recovery is `adb install -r` of an embedded APK plus
+			`run-as <pkg> rm -rf files/.__override__`.
 
-			AdbTarget may be omitted with exactly one device attached; with two
-			it picks one arbitrarily.
+			So the loop is still build-then-install, and
+			EmbedAssembliesIntoApk=true is still required:
+
+			    dotnet build TheBleedingDeacons.Intergroup.Hand 			      -c Debug -p:HandAndroidOnly=true 			      -p:EmbedAssembliesIntoApk=true
+			    adb -s <serial> install -r <bin/Debug/net*-android/*-Signed.apk>
+
+			Measured on a one-line change. The win that is real is the ABI
+			narrowing further down, not the deployment mode:
+
+			    both ABIs, embedded     2m06 + 12s install, 95MB apk
+			    arm64 only, embedded    1m07 +  9s install, 53MB apk
+			    Fast Deployment              8s, 15MB apk — and crashes
+
+			`-t:Run` can be used WITH EmbedAssembliesIntoApk=true to fold the
+			install and launch into one command; it just buys no speed. That is
+			why the singular TFM stays rather than being reverted, and it costs
+			nothing: it changes no output path, and CI builds green through it.
 
 			<b>Not the same thing as -f.</b> That sets TargetFramework as a
 			GLOBAL property, forcing this TFM onto the plain net10.0 projects
@@ -63,8 +87,7 @@
 
 			Left plural for the other heads: HandAppleOnly is genuinely two
 			frameworks, and the Windows and MacCatalyst ones are single-valued
-			but have no device loop that would benefit. Narrowing them would be
-			a change with no measured payoff.
+			but have no device loop that would benefit.
 		-->
 		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'"></TargetFrameworks>
 		<TargetFramework Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFramework>
