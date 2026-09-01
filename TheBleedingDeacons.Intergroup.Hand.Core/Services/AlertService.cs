@@ -184,6 +184,31 @@ public sealed class AlertService : IAlertService, IDisposable
 		Log.Information("Alert polling stopped");
 	}
 
+	public async Task SilenceAsync()
+	{
+		// The poll is untouched, and so is every outstanding alert. Only
+		// the noise stops.
+		//
+		// _alarmSounding is cleared so the loop does not believe an alarm
+		// is still running and skip restarting one later; the alerts that
+		// were sounding stay outstanding, and a red one arriving after
+		// this will start the alarm again — silently, while meeting mode
+		// is on.
+		await _gate.WaitAsync().ConfigureAwait(false);
+		try
+		{
+			_alarmSounding = false;
+		}
+		finally
+		{
+			_gate.Release();
+		}
+
+		await _alarm.StopAsync().ConfigureAwait(false);
+
+		Log.Information("Alarm silenced for meeting mode");
+	}
+
 	public Task RefreshAsync() => PollAsync(CancellationToken.None);
 
 	public async Task HandlePushAsync(HandAlert alert)
@@ -395,12 +420,12 @@ public sealed class AlertService : IAlertService, IDisposable
 
 	private async Task PollAsync(CancellationToken cancellationToken)
 	{
-		var configuration = _configuration.GetReachConfiguration();
-		if (!configuration.OnDuty)
-		{
-			return;
-		}
-
+		// <b>No duty gate here any more.</b> This used to return early when
+		// the responder was off duty, which meant alerts did not arrive at
+		// all — a handset that had quietly left the rota, with nobody told.
+		// Meeting mode replaced it and changes only the volume, so the poll
+		// now always runs and the decision about noise is made per alert
+		// when one is admitted. See ReachConfiguration.InMeeting.
 		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
 		if (string.IsNullOrEmpty(token))
 		{
@@ -582,11 +607,16 @@ public sealed class AlertService : IAlertService, IDisposable
 			"Alert {AlertId} admitted: {Kind} {Reference} ({Level}, {Response})",
 			alert.Id, alert.Kind, alert.Reference, alert.LevelOrDerived, alert.Response);
 
+		// Read once, here, and used for both the notification and the
+		// alarm: a single alert must not be silent in the tray and audible
+		// in the room, or the other way about.
+		var silent = _configuration.GetReachConfiguration().InMeeting;
+
 		// The OS notification first: it is what a responder sees if the app
 		// is not on screen, and it must be up even if the audio fails.
 		try
 		{
-			await _presenter.PresentAsync(alert).ConfigureAwait(false);
+			await _presenter.PresentAsync(alert, silent).ConfigureAwait(false);
 		}
 		catch (Exception ex)
 		{
@@ -615,7 +645,7 @@ public sealed class AlertService : IAlertService, IDisposable
 			_gate.Release();
 		}
 
-		await _alarm.StartAsync(alert).ConfigureAwait(false);
+		await _alarm.StartAsync(alert, silent).ConfigureAwait(false);
 	}
 
 	/// <summary>

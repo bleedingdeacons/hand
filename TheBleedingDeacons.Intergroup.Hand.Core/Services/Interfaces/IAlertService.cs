@@ -32,6 +32,21 @@ public interface IAlertService
 	/// <summary>Stop polling and silence any alarm.</summary>
 	Task StopAsync();
 
+	/// <summary>
+	/// Silence an alarm that is already sounding, and change nothing
+	/// else.
+	///
+	/// <para>What meeting mode calls when it is switched on mid-alarm. A
+	/// responder reaching for it in a room full of people wants the noise
+	/// to stop now, not at the next alert.</para>
+	///
+	/// <para><b>Deliberately not StopAsync.</b> That cancels the poll and
+	/// takes the handset off the rota, which is exactly what meeting mode
+	/// exists not to do. This stops the sound; the alert stays
+	/// outstanding, still listed, still needing an answer.</para>
+	/// </summary>
+	Task SilenceAsync();
+
 	/// <summary>Poll once, now — on resume, or on pull-to-refresh.</summary>
 	Task RefreshAsync();
 

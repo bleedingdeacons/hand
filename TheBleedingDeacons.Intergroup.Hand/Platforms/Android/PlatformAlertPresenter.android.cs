@@ -135,24 +135,30 @@ public sealed partial class PlatformAlertPresenter
 		}
 	}
 
-	private partial Task PlatformPresentAsync(HandAlert alert)
+	private partial Task PlatformPresentAsync(HandAlert alert, bool silent)
 	{
 		// Three levels, three channels, three notifications. Only red
 		// falls through to the alarm treatment below — the other two are
 		// notifications a responder can miss, which is the difference the
 		// level exists to express.
+		//
+		// Meeting mode doubles that to six: each level has a silent twin,
+		// because Android fixes a channel's sound when it is created and
+		// will not let it be changed. Everything else about the
+		// notification is identical — see QuietChannelId.
 		if (alert.IsQuiet)
 		{
-			return PresentQuietly(alert);
+			return PresentQuietly(alert, silent);
 		}
 
 		if (alert.IsWarning)
 		{
-			return PresentWarning(alert);
+			return PresentWarning(alert, silent);
 		}
 
 		var context = AndroidApp.Context;
-		EnsureChannel(context);
+		EnsureChannel(context, silent);
+		var channelId = silent ? QuietChannelId : ChannelId;
 
 		// Tapping the notification opens the app on the alert list.
 		var intent = new Intent(context, typeof(MainActivity));
@@ -170,7 +176,7 @@ public sealed partial class PlatformAlertPresenter
 		// builder, so a chain is a run of possible null dereferences that
 		// says nothing useful. The builder never actually returns null — it
 		// returns itself.
-		var builder = new NotificationCompat.Builder(context, ChannelId);
+		var builder = new NotificationCompat.Builder(context, channelId);
 		builder.SetContentTitle(alert.Title);
 		builder.SetContentText(alert.Body);
 		builder.SetStyle(new NotificationCompat.BigTextStyle().BigText(alert.Body));
@@ -206,7 +212,7 @@ public sealed partial class PlatformAlertPresenter
 		// rather than a guarantee, and the difference is what
 		// LockScreenPrivacy exists to report.
 		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
-		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent, channelId));
 
 		// The full-screen intent is what turns a notification into an
 		// incoming call: the system launches the activity over the lock
@@ -255,11 +261,14 @@ public sealed partial class PlatformAlertPresenter
 	/// which means it carries the same freehand text the alert did and
 	/// deserves the same treatment.</para>
 	/// </summary>
-	private static Task PresentQuietly(HandAlert alert)
+	private static Task PresentQuietly(HandAlert alert, bool silent)
 	{
-		EnsureNoticeChannel(AndroidApp.Context);
+		EnsureNoticeChannel(AndroidApp.Context, silent);
 
-		return PresentWithoutTakingOver(alert, NoticeChannelId, NotificationCompat.CategoryStatus);
+		return PresentWithoutTakingOver(
+			alert,
+			silent ? QuietNoticeChannelId : NoticeChannelId,
+			NotificationCompat.CategoryStatus);
 	}
 
 	/// <summary>
@@ -276,11 +285,14 @@ public sealed partial class PlatformAlertPresenter
 	/// alert is addressed to the responder, where a notice reports on
 	/// something. It is what Android uses to rank and group.</para>
 	/// </summary>
-	private static Task PresentWarning(HandAlert alert)
+	private static Task PresentWarning(HandAlert alert, bool silent)
 	{
-		EnsureWarningChannel(AndroidApp.Context);
+		EnsureWarningChannel(AndroidApp.Context, silent);
 
-		return PresentWithoutTakingOver(alert, WarningChannelId, NotificationCompat.CategoryMessage);
+		return PresentWithoutTakingOver(
+			alert,
+			silent ? QuietWarningChannelId : WarningChannelId,
+			NotificationCompat.CategoryMessage);
 	}
 
 	/// <summary>
@@ -321,7 +333,7 @@ public sealed partial class PlatformAlertPresenter
 				: NotificationCompat.PriorityDefault);
 		builder.SetContentIntent(contentIntent);
 		builder.SetVisibility(NotificationCompat.VisibilityPrivate);
-		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent));
+		builder.SetPublicVersion(RedactedVersion(context, alert, contentIntent, channelId));
 
 		try
 		{
@@ -385,9 +397,13 @@ public sealed partial class PlatformAlertPresenter
 	/// and treats it as "no public version", which degrades to Android's own
 	/// "Contents hidden" line rather than to an unredacted notification.
 	/// </remarks>
-	private static Notification? RedactedVersion(Context context, HandAlert alert, PendingIntent? contentIntent)
+	private static Notification? RedactedVersion(
+		Context context,
+		HandAlert alert,
+		PendingIntent? contentIntent,
+		string channelId)
 	{
-		var builder = new NotificationCompat.Builder(context, ChannelId);
+		var builder = new NotificationCompat.Builder(context, channelId);
 		builder.SetContentTitle(alert.LockScreenTitle);
 		builder.SetContentText(HandAlert.LockScreenBody);
 		builder.SetSmallIcon(Resource.Drawable.ic_hand_alert);
@@ -407,7 +423,7 @@ public sealed partial class PlatformAlertPresenter
 	/// of them exists on the alert channel to wake somebody, and nothing
 	/// on this channel is worth waking anybody for.</para>
 	/// </summary>
-	internal static void EnsureNoticeChannel(Context context)
+	internal static void EnsureNoticeChannel(Context context, bool silent = false)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
 		{
@@ -415,19 +431,26 @@ public sealed partial class PlatformAlertPresenter
 		}
 
 		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
-		if (manager is null || manager.GetNotificationChannel(NoticeChannelId) is not null)
+		var id = silent ? QuietNoticeChannelId : NoticeChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
 		{
 			return;
 		}
 
 		var channel = new NotificationChannel(
-			NoticeChannelId,
-			"Helpline updates",
+			id,
+			silent ? "Helpline updates (in a meeting)" : "Helpline updates",
 			NotificationImportance.Default)
 		{
 			Description = "News about alerts somebody else has already answered. These will not wake you.",
 			LockscreenVisibility = NotificationVisibility.Private,
 		};
+
+		// A Default-importance channel still chimes unless told not to.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+		}
 
 		manager.CreateNotificationChannel(channel);
 	}
@@ -445,7 +468,7 @@ public sealed partial class PlatformAlertPresenter
 	/// difference — no full-screen intent, and it can be swiped
 	/// away.</para>
 	/// </summary>
-	internal static void EnsureWarningChannel(Context context)
+	internal static void EnsureWarningChannel(Context context, bool silent = false)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
 		{
@@ -453,14 +476,15 @@ public sealed partial class PlatformAlertPresenter
 		}
 
 		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
-		if (manager is null || manager.GetNotificationChannel(WarningChannelId) is not null)
+		var id = silent ? QuietWarningChannelId : WarningChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
 		{
 			return;
 		}
 
 		var channel = new NotificationChannel(
-			WarningChannelId,
-			"Helpline messages",
+			id,
+			silent ? "Helpline messages (in a meeting)" : "Helpline messages",
 			NotificationImportance.High)
 		{
 			Description = "Alerts that should get your attention but will not ring like a call.",
@@ -469,10 +493,16 @@ public sealed partial class PlatformAlertPresenter
 
 		channel.EnableVibration(true);
 
+		// Meeting mode: the banner and the buzz stay, the tone goes.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+		}
+
 		manager.CreateNotificationChannel(channel);
 	}
 
-	internal static void EnsureChannel(Context context)
+	internal static void EnsureChannel(Context context, bool silent = false)
 	{
 		if (!OperatingSystem.IsAndroidVersionAtLeast(26))
 		{
@@ -480,14 +510,15 @@ public sealed partial class PlatformAlertPresenter
 		}
 
 		var manager = (NotificationManager?)context.GetSystemService(Context.NotificationService);
-		if (manager is null || manager.GetNotificationChannel(ChannelId) is not null)
+		var id = silent ? QuietChannelId : ChannelId;
+		if (manager is null || manager.GetNotificationChannel(id) is not null)
 		{
 			return;
 		}
 
 		var channel = new NotificationChannel(
-			ChannelId,
-			"Helpline alerts",
+			id,
+			silent ? "Helpline alerts (in a meeting)" : "Helpline alerts",
 			NotificationImportance.High)
 		{
 			Description = "Alerts for the telephone-responder rota. These are meant to wake you.",
@@ -507,6 +538,19 @@ public sealed partial class PlatformAlertPresenter
 		channel.EnableVibration(true);
 		channel.EnableLights(true);
 		channel.SetBypassDnd(true);
+
+		// <b>Meeting mode stops here, and keeps everything else.</b>
+		// Importance stays High so a red alert still takes the screen over
+		// with its full-screen intent, vibration and lights stay on, and
+		// the Do Not Disturb bypass above is untouched — a responder who
+		// silenced the room did not ask to stop being alerted. Only the
+		// siren is absent.
+		if (silent)
+		{
+			channel.SetSound(null, null);
+			manager.CreateNotificationChannel(channel);
+			return;
+		}
 
 		var soundUri = Android.Net.Uri.Parse(
 			$"{ContentResolver.SchemeAndroidResource}://{context.PackageName}/{Resource.Raw.reach_alert}");

@@ -71,10 +71,10 @@ public sealed class ReachConfigurationTests
 		Assert.Equal(expected, new ReachConfiguration { PollSeconds = given }.Normalised().PollSeconds);
 
 	[Fact]
-	public void Normalised_CarriesOnDutyThrough()
+	public void Normalised_CarriesMeetingModeThrough()
 	{
-		Assert.False(new ReachConfiguration { OnDuty = false }.Normalised().OnDuty);
-		Assert.True(new ReachConfiguration { OnDuty = true }.Normalised().OnDuty);
+		Assert.False(new ReachConfiguration { InMeeting = false }.Normalised().InMeeting);
+		Assert.True(new ReachConfiguration { InMeeting = true }.Normalised().InMeeting);
 	}
 
 	[Fact]
@@ -90,12 +90,16 @@ public sealed class ReachConfigurationTests
 	}
 
 	[Fact]
-	public void DefaultsToTwentySecondsOnDuty()
+	public void DefaultsToTwentySecondsAndAudible()
 	{
 		var configuration = new ReachConfiguration();
 
 		Assert.Equal(20, configuration.PollSeconds);
-		Assert.True(configuration.OnDuty);
+
+		// Off by default is the safe direction: a handset that has never
+		// been told otherwise makes a noise, and so does one restored from
+		// a backup.
+		Assert.False(configuration.InMeeting);
 	}
 
 	/// <summary>

@@ -479,18 +479,20 @@ public sealed class AlertServiceTests
 	// ── Polling ───────────────────────────────────────────────────────
 
 	/// <summary>
-	/// Off duty is the responder saying stop. The handset keeps its token;
-	/// it just stops asking and stops making noise.
+	/// <b>Meeting mode does not stop the poll.</b> That is the whole
+	/// difference from the off-duty switch it replaced: off duty meant a
+	/// handset had quietly left the rota, and this means only that the
+	/// room does not hear it.
 	/// </summary>
 	[Fact]
-	public async Task DoesNotPollWhenOffDuty()
+	public async Task StillPollsWhileInAMeeting()
 	{
-		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", OnDuty = false };
+		_config.Reach = new ReachConfiguration { BaseUrl = "https://example.test/", InMeeting = true };
 		using var service = Build();
 
 		await service.RefreshAsync();
 
-		Assert.Equal(0, _reach.Polls);
+		Assert.Equal(1, _reach.Polls);
 	}
 
 	/// <summary>
