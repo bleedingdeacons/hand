@@ -48,7 +48,7 @@ internal sealed class StubHttpMessageHandler(
 /// </summary>
 internal sealed class FakeConfigurationService : IConfigurationService
 {
-	public ReachConfiguration Reach { get; set; } = new() { BaseUrl = "https://example.test/", PollSeconds = 20, OnDuty = true };
+	public ReachConfiguration Reach { get; set; } = new() { BaseUrl = "https://example.test/", PollSeconds = 20 };
 
 	public string DeviceToken { get; set; } = string.Empty;
 
@@ -113,9 +113,13 @@ internal sealed class FakeAlarm : IAlertAlarm
 
 	public bool IsSounding { get; private set; }
 
-	public Task StartAsync(HandAlert alert)
+	/// <summary>Whether each start was asked for silently, in order.</summary>
+	public List<bool> StartedSilently { get; } = [];
+
+	public Task StartAsync(HandAlert alert, bool silent = false)
 	{
 		Started.Add(alert);
+		StartedSilently.Add(silent);
 		IsSounding = true;
 		return Task.CompletedTask;
 	}
@@ -142,8 +146,13 @@ internal sealed class FakePresenter : IPlatformAlertPresenter
 
 	public Task<bool> RequestPermissionsAsync() => Task.FromResult(true);
 
-	public Task PresentAsync(HandAlert alert)
+	/// <summary>Whether each notification was posted silently, in order.</summary>
+	public List<bool> PresentedSilently { get; } = [];
+
+	public Task PresentAsync(HandAlert alert, bool silent = false)
 	{
+		PresentedSilently.Add(silent);
+
 		if (ThrowOnPresent)
 		{
 			throw new InvalidOperationException("no notification permission");

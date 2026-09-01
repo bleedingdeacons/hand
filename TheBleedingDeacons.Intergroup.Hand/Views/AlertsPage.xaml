@@ -43,11 +43,17 @@
                 <Label Text="{Binding Responder}" FontSize="13" Opacity="0.7" />
             </VerticalStackLayout>
 
+            <!--
+                In a meeting: alerting as normal, silently. This replaced
+                an on/off duty switch, and it is a different control in
+                the one way that matters — it never takes the handset off
+                the rota, it only decides whether the room hears.
+            -->
             <Switch
                 Grid.Column="1"
-                IsToggled="{Binding OnDuty}"
+                IsToggled="{Binding InMeeting}"
                 VerticalOptions="Center"
-                AutomationProperties.Name="On duty" />
+                AutomationProperties.Name="In a meeting" />
 
             <Button
                 Grid.Column="2"

@@ -35,7 +35,7 @@ public sealed partial class AlertsViewModel : ObservableObject
 			OnPropertyChanged(nameof(StatusLine));
 		};
 
-		OnDuty = _configuration.GetReachConfiguration().OnDuty;
+		InMeeting = _configuration.GetReachConfiguration().InMeeting;
 	}
 
 	public ObservableCollection<HandAlert> Alerts => _alerts.Active;
@@ -53,18 +53,28 @@ public sealed partial class AlertsViewModel : ObservableObject
 	/// </summary>
 	public string StatusLine => Alerts.Count switch
 	{
-		0 => OnDuty ? "On duty — nothing outstanding" : "Off duty",
+		0 => InMeeting ? "In a meeting — nothing outstanding" : "Nothing outstanding",
 		1 => "1 alert waiting",
 		var n => $"{n} alerts waiting",
 	};
 
+	/// <summary>
+	/// Whether the handset is in a meeting: alerting as normal, silently.
+	///
+	/// <para><b>This replaced an on/off duty switch, and it is not the
+	/// same control.</b> Off duty stopped the poll — the handset left the
+	/// rota and nobody was told. This changes the volume and nothing
+	/// else: the poll runs, the card is listed, the phone still vibrates,
+	/// and a red alert still takes the screen. See
+	/// <see cref="ReachConfiguration.InMeeting"/>.</para>
+	/// </summary>
 	[ObservableProperty]
-	public partial bool OnDuty { get; set; }
+	public partial bool InMeeting { get; set; }
 
 	[ObservableProperty]
 	public partial bool IsRefreshing { get; set; }
 
-	partial void OnOnDutyChanged(bool value)
+	partial void OnInMeetingChanged(bool value)
 	{
 		OnPropertyChanged(nameof(StatusLine));
 
@@ -73,24 +83,25 @@ public sealed partial class AlertsViewModel : ObservableObject
 			try
 			{
 				var configuration = _configuration.GetReachConfiguration();
-				configuration.OnDuty = value;
+				configuration.InMeeting = value;
 				await _configuration.SaveReachConfigurationAsync(configuration).ConfigureAwait(false);
 
-				// Going off duty silences an alarm that is already sounding.
-				// A responder switching off is asking for quiet now, not at
-				// the next alert.
+				// Switching on silences an alarm that is already sounding.
+				// A responder reaching for this in a meeting wants quiet
+				// now, not at the next alert — and the alert itself stays
+				// on screen, outstanding, exactly as it was.
+				//
+				// <b>Nothing starts or stops the poll here any more.</b>
+				// That is what the old duty switch did, and it is the whole
+				// difference: this handset never leaves the rota.
 				if (value)
 				{
-					await _alerts.StartAsync().ConfigureAwait(false);
-				}
-				else
-				{
-					await _alerts.StopAsync().ConfigureAwait(false);
+					await _alerts.SilenceAsync().ConfigureAwait(false);
 				}
 			}
 			catch (Exception ex)
 			{
-				Log.Error(ex, "Duty state could not be changed");
+				Log.Error(ex, "Meeting mode could not be changed");
 			}
 		});
 	}

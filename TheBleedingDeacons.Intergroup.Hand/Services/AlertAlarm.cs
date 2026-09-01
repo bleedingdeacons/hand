@@ -34,7 +34,7 @@ public sealed partial class AlertAlarm : IAlertAlarm
 
 	public bool IsSounding { get; private set; }
 
-	public async Task StartAsync(HandAlert alert)
+	public async Task StartAsync(HandAlert alert, bool silent = false)
 	{
 		ArgumentNullException.ThrowIfNull(alert);
 
@@ -50,17 +50,27 @@ public sealed partial class AlertAlarm : IAlertAlarm
 
 			IsSounding = true;
 
-			try
+			// <b>Meeting mode takes the audio and leaves the shaking.</b>
+			// The responder still feels it in a pocket and still sees the
+			// card; the room hears nothing. IsSounding stays true either
+			// way, because it means "this alarm is running" — the state
+			// machine that stops it when the last red alert is settled must
+			// not care whether it happened to be audible.
+			if (!silent)
 			{
-				PlatformStart(alert);
-			}
-			catch (Exception ex)
-			{
-				// A handset that cannot play audio — a broken codec, an
-				// audio focus refusal, a missing resource — must still
-				// vibrate and still show the alert. Losing the sound is bad;
-				// losing the alert because the sound failed would be worse.
-				Log.Error(ex, "Alert audio could not be started for alert {AlertId}", alert.Id);
+				try
+				{
+					PlatformStart(alert);
+				}
+				catch (Exception ex)
+				{
+					// A handset that cannot play audio — a broken codec, an
+					// audio focus refusal, a missing resource — must still
+					// vibrate and still show the alert. Losing the sound is
+					// bad; losing the alert because the sound failed would
+					// be worse.
+					Log.Error(ex, "Alert audio could not be started for alert {AlertId}", alert.Id);
+				}
 			}
 
 			StartVibrating();

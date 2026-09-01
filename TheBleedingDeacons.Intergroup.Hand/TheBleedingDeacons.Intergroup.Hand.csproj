@@ -20,7 +20,54 @@
 
 		     Last so they win when set; a local build without either keeps the
 		     full set above. Same arrangement as Register. -->
-		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFrameworks>
+		<!--
+			HandAndroidOnly sets the SINGULAR TargetFramework, and that one
+			word is what makes a fast debug loop possible.
+
+			With TargetFrameworks plural — even holding a single value —
+			MSBuild does an outer, dispatching build, and the targets that
+			deploy to a device do not exist there:
+
+			    error MSB4057: The target "Run" does not exist in the project
+
+			So the only way to get an APK onto a handset was to build one and
+			push it with `adb install`, which in turn needs
+			EmbedAssembliesIntoApk=true — because the default, Fast Deployment,
+			deliberately leaves the managed assemblies OUT of the APK and
+			expects MSBuild's own Install target to push them separately. Skip
+			that step and the app installs, launches, and immediately aborts
+			with "No assemblies found in .../.__override__".
+
+			Singular restores `-t:Run`, which builds, installs and launches in
+			one step and uses Fast Deployment. Measured on a one-line change:
+
+			    adb install route, both ABIs      2m06 + 12s install, 95MB apk
+			    adb install route, arm64 only     1m07 + 9s install,  53MB apk
+			    -t:Run with Fast Deployment       8s total,           15MB apk
+
+			The full loop:
+
+			    dotnet build TheBleedingDeacons.Intergroup.Hand -c Debug \
+			      -p:HandAndroidOnly=true -t:Run \
+			      -p:AdbTarget="-s <serial>"
+
+			AdbTarget may be omitted with exactly one device attached; with two
+			it picks one arbitrarily.
+
+			<b>Not the same thing as -f.</b> That sets TargetFramework as a
+			GLOBAL property, forcing this TFM onto the plain net10.0 projects
+			this one references and breaking their restore (NU1105) or their
+			output paths (MSB3030). This is a project-level property inside
+			this csproj, so it says nothing about anybody else. The warning
+			above still stands.
+
+			Left plural for the other heads: HandAppleOnly is genuinely two
+			frameworks, and the Windows and MacCatalyst ones are single-valued
+			but have no device loop that would benefit. Narrowing them would be
+			a change with no measured payoff.
+		-->
+		<TargetFrameworks Condition="'$(HandAndroidOnly)' == 'true'"></TargetFrameworks>
+		<TargetFramework Condition="'$(HandAndroidOnly)' == 'true'">net10.0-android</TargetFramework>
 		<TargetFrameworks Condition="'$(HandWindowsOnly)' == 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
 		<TargetFrameworks Condition="'$(HandAppleOnly)' == 'true'">net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 		<!--
