@@ -25,8 +25,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="xunit.v3" Version="4.0.0" />
-		<PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+		<PackageReference Include="xunit.v3" Version="3.2.2" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
 		<!--
 			Coverage is collected in CI with the coverlet.console tool (see
 			.config/dotnet-tools.json), which wraps the Microsoft.Testing.Platform
