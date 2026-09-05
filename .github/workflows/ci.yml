@@ -294,7 +294,52 @@ jobs:
           # is closed twice over — belt and braces, because a runaway here
           # would bump on every iteration.
           git commit -am "chore: version ${{ steps.bump.outputs.version }} [skip ci]"
-          git push
+
+          # Rebase onto anything that landed while this job was running, and
+          # retry. A bare `git push` here fails outright when main has moved
+          # between the checkout above and this line, and that is not
+          # hypothetical — it cost Link a whole release on 2026-09-05, when a
+          # merge landed sixteen seconds before this push. Every gate had
+          # passed; the version was simply lost, and the next release skipped
+          # a number to catch up. Hand's job is Link's, ported, so it had the
+          # identical exposure and had simply not been unlucky yet.
+          #
+          # The concurrency group above serialises this job against *itself*,
+          # so the race is never two version jobs. It is a person merging
+          # while one is in flight, which no amount of job-level concurrency
+          # can prevent — the other writer is not a job.
+          #
+          # Rebasing is safe for the version this job computed. The bump is
+          # derived from the commit range this run was triggered for, and the
+          # commits that arrived meanwhile are not in that range: they get
+          # their own run and their own bump. Landing this commit on top of
+          # them skips nothing and double-counts nothing.
+          #
+          # A conflict is deliberately not retried. The only way to conflict
+          # is another writer touching the same version line, which the
+          # concurrency group already rules out for this job — so it means
+          # something genuinely unexpected, and failing loudly beats
+          # resolving it blind.
+          #
+          # Note the plugin repos solve this a shorter way, with an
+          # unconditional `git pull --rebase` before the push. That closes the
+          # long window (the minutes spent building) but leaves a short one
+          # between the pull and the push. This form has no such gap, which is
+          # why it is the one used here and in Link rather than the other.
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "Pushed the version commit on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected on attempt $attempt; main moved. Rebasing onto it."
+            if ! git pull --rebase origin main; then
+              echo "Rebase onto main failed; leaving it alone." >&2
+              git rebase --abort || true
+              exit 1
+            fi
+          done
+          echo "Could not push the version commit after 3 attempts." >&2
+          exit 1
 
       - name: Summary
         run: |
