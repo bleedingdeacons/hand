@@ -389,6 +389,26 @@ Only `Reach:BaseUrl` is written. `PollSeconds` comes from the default of 20 in
 out — an artifact anybody can download has no business carrying a log-shipping
 token. The file still never enters git.
 
+**Push needs the `GOOGLE_SERVICES_JSON` secret, and its absence is silent.**
+Both Android builds write `Platforms/Android/google-services.json` from it.
+Without it the build succeeds and the artifact enrols **poll-only**: alerts
+arrive on the poll interval while the app is running, and a handset with the
+app closed does not ring. Since that is the one thing this app exists to do,
+the log now says which of the two states every build is in.
+
+It is a secret rather than a variable because the repository is public and the
+file carries an API key and a project number. Neither is a password — Google
+expects this file to ship inside an APK — but an Actions log is a worse place
+for it than the inside of a binary. So, unlike `appsettings.json`, its contents
+are never printed. The script validates it instead: malformed JSON fails the
+build, and so does a file whose `package_name` is not
+`com.thebleedingdeacons.intergroup.hand`, because a config for the wrong app
+produces a build that looks completely healthy and never receives a push.
+
+`v1.17.1` was released before this existed and is poll-only. It was found by
+unzipping the released APK and seeing no `AIza…` key in its `resources.arsc`
+where a locally built one had both that and the app id.
+
 Unset the variable and the old behaviour returns: a build that succeeds and an
 app that cannot reach a server. That is what a fork gets.
 

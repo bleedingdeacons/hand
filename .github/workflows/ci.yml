@@ -50,6 +50,15 @@ name: CI
 #    again), but the handset is off the rota until somebody signs it back in.
 #    Do not do it to a duty phone mid-shift.
 #
+# <b>Push depends on a secret, and its absence is silent.</b> Both Android
+# builds write Platforms/Android/google-services.json from the
+# GOOGLE_SERVICES_JSON secret. Without it the build still succeeds and the
+# artifact enrols POLL-ONLY — alerts arrive on the poll interval while the app
+# is running, and a handset with the app closed does not ring. v1.17.1 shipped
+# that way and nothing said so: it was found by unzipping the released APK and
+# finding no AIza… key in its resources.arsc where a local build had one. The
+# script now says which state it is in, in the log, every run.
+#
 # WHAT STILL COMPILES NOWHERE. Two heads have no job, by decision rather than
 # by accident:
 #
@@ -144,6 +153,14 @@ jobs:
         env:
           BASE_URL: ${{ vars.HAND_BASE_URL }}
         run: bash .github/scripts/write-appsettings.sh
+
+      # Android only — the iOS job needs no equivalent, because iOS push is
+      # APNs through the notification service extension and has nothing to do
+      # with this file.
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: bash .github/scripts/write-google-services.sh
 
       # Single build with implicit restore. HandAndroidOnly=true trims the app
       # to just the net10.0-android head, so only the Android graph is restored
@@ -613,6 +630,17 @@ jobs:
         env:
           BASE_URL: ${{ vars.HAND_BASE_URL }}
         run: bash .github/scripts/write-appsettings.sh
+
+      # This one matters more here than in the build job. The build job's
+      # artifact is something a developer downloads; this is the release APK,
+      # the one that ends up on a duty handset — and without Firebase it enrols
+      # poll-only and will not ring when the app is closed. v1.17.1 shipped
+      # exactly that way, which is what prompted this step.
+      - name: Write google-services.json
+        if: steps.bump.outputs.version != ''
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: bash .github/scripts/write-google-services.sh
 
       # Builds the working tree, which by this point carries the bumped csproj
       # written by the commit step above.
