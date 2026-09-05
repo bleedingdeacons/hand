@@ -343,6 +343,27 @@ Two artifacts on every run, `hand-apk` and `hand-ipa-unsigned`, kept for
 30 days. Open the run from **Actions** and they are in the Artifacts section at
 the bottom of the summary.
 
+**And a GitHub Release on every merge to `main`.** Run artifacts expire after
+30 days, so a version older than a month had nothing to show for itself at all;
+the `version` job now tags `vX.Y.Z` and publishes a release with an APK
+attached. It is under **Releases**, and it does not expire.
+
+That APK is *rebuilt* after the version is written rather than taken from the
+build job. The build job's artifact came from the commit before the bump, so
+its manifest carries the previous version — and, more to the point, the
+previous Android `versionCode`, which is what decides whether a build can
+update an existing install. Attaching it to a tag naming the new version would
+ship an APK that disagrees with its own release.
+
+Only the APK is attached. The `.ipa` is built on a macOS runner and the release
+job is Ubuntu, and carrying it across would buy nothing: it is unsigned, so it
+installs on nothing until somebody re-signs it. It stays on the run.
+
+Tags are new here and are not load-bearing: `bump-version.sh` reads the current
+version out of the csproj, not from `git describe`. Worth knowing before
+assuming it and Link's script of the same name are interchangeable — Link's
+tags *are* load-bearing.
+
 Both are built against the **`HAND_BASE_URL`** repository variable, which CI
 writes into `appsettings.json` before compiling. Without it they come out with
 no idea which intergroup they belong to — fine for a build nobody installs, and

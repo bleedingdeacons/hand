@@ -17,7 +17,9 @@ name: CI
 #  * semgrep       — a job of its own rather than a step, because the other jobs
 #                    install a JDK and the MAUI workload and Semgrep needs
 #                    neither.
-#  * version       — bumps the version, and only after all four have passed.
+#  * version       — bumps the version, tags it and publishes a GitHub Release
+#                    with an APK rebuilt at that version; only after all four
+#                    have passed.
 #
 # <b>Both mobile heads are built, and both produce something
 # installable-shaped.</b> This file used to say the iOS head could not be built
@@ -409,7 +411,7 @@ jobs:
           semgrep ci
 
   version:
-    name: Bump version
+    name: Bump version & publish the release
     # The whole point of this change: the bump now waits on every gate. Before,
     # this lived in its own workflow triggered by `push` with no `needs:` at
     # all, so a version was cut whether or not the build, the tests or Semgrep
@@ -526,11 +528,166 @@ jobs:
           echo "Could not push the version commit after 3 attempts." >&2
           exit 1
 
+      # The tag is what a release hangs off, and this repo had none:
+      # bump-version.sh reads the current version out of the csproj rather than
+      # from `git describe`, so nothing here has ever needed one. That is a
+      # difference from Link worth knowing before assuming the two scripts are
+      # interchangeable — Link's tags are load-bearing and these are not.
+      #
+      # Written after the commit so it points at the version it names, and
+      # guarded against existing so a re-run of a green release is a no-op
+      # rather than a failure.
+      - name: Tag the release
+        if: steps.bump.outputs.version != ''
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.bump.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag already exists; nothing to tag."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "$tag"
+          git push origin "$tag"
+
+      # ---------------------------------------------------------------
+      # Publish a GitHub Release, with an APK built at the version it names.
+      #
+      # Until now this job bumped and stopped. The build job's artifact expires
+      # after 30 days, so a version older than a month had nothing to show for
+      # itself at all.
+      #
+      # THE REBUILD IS THE POINT, and it is why this is not a download-artifact
+      # from the build job. That artifact was built from the commit *before* the
+      # bump, so its manifest carries the previous version and its Android
+      # versionCode is one behind; attaching it to a tag naming the new one
+      # would ship an APK that disagrees with its own release. Worse here than
+      # in Link, because versionCode is what decides whether a build can update
+      # an existing install.
+      #
+      # Android only. The .ipa is built on macOS and this job is ubuntu, and
+      # plumbing it across would buy nothing: it is unsigned, so it installs on
+      # precisely nothing until somebody with an Apple Developer Program
+      # certificate re-signs it.
+      - name: Setup JDK 21
+        if: steps.bump.outputs.version != ''
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup .NET
+        if: steps.bump.outputs.version != ''
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Install MAUI Android workload
+        if: steps.bump.outputs.version != ''
+        run: dotnet workload install maui-android
+
+      # Same script and same rules as the build job — see the long comment in
+      # it. A release APK with no Reach address would be the least useful of
+      # all the artifacts here, since it is the one somebody keeps.
+      - name: Write appsettings.json
+        if: steps.bump.outputs.version != ''
+        env:
+          BASE_URL: ${{ vars.HAND_BASE_URL }}
+        run: bash .github/scripts/write-appsettings.sh
+
+      # Builds the working tree, which by this point carries the bumped csproj
+      # written by the commit step above.
+      - name: Build the release APK
+        if: steps.bump.outputs.version != ''
+        run: >
+          dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
+          -c Release
+          -p:HandAndroidOnly=true
+          -p:UseDevCredentials=false
+          -p:ContinuousIntegrationBuild=true
+
+      # -Signed.apk is the one to keep: .NET Android emits an unsigned
+      # intermediate alongside it. Renamed for the version so a downloaded file
+      # still says what it is once it is sitting in somebody's downloads folder
+      # next to four others all called
+      # com.thebleedingdeacons.intergroup.hand-Signed.apk.
+      - name: Name the APK for its version
+        id: apk
+        if: steps.bump.outputs.version != ''
+        run: |
+          set -euo pipefail
+          src=$(ls TheBleedingDeacons.Intergroup.Hand/bin/Release/net10.0-android/*-Signed.apk 2>/dev/null | head -1)
+          if [ -z "$src" ]; then
+            echo 'No -Signed.apk was produced. bin/Release/net10.0-android holds:' >&2
+            ls -l TheBleedingDeacons.Intergroup.Hand/bin/Release/net10.0-android || true
+            exit 1
+          fi
+          out="hand-${{ steps.bump.outputs.version }}.apk"
+          cp "$src" "$out"
+          echo "apk=$out" >> "$GITHUB_OUTPUT"
+          ls -l "$out"
+
+      # The body is not decoration. This APK is signed with the runner's
+      # throwaway debug keystore, and somebody will eventually find this page
+      # without having read a line of ci.yml — at which point what uninstalling
+      # costs needs to be on the page they are looking at.
+      - name: Write the release notes
+        if: steps.bump.outputs.version != ''
+        run: |
+          cat > release-notes.md <<'EOF'
+          ### What this APK is
+
+          A **Debug-keystore-signed** Android build, produced on a GitHub runner
+          from the commit this tag names. It is a compile gate and a
+          convenience — not a shipping artifact.
+
+          ### Before you install it
+
+          It is signed with the runner's own throwaway key, which is not the key
+          on any developer machine. If you already have a locally built Hand on
+          the handset, it will refuse to install over it with
+          `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+
+          Getting past that means uninstalling, which drops **this handset's
+          enrolment and its local alert history**. Nothing becomes permanently
+          unreadable — Reach holds the payload key, so a handset that signs in
+          again gets a fresh one and reads new alerts normally — but the handset
+          is off the rota until somebody does sign it back in. Not something to
+          do to a duty phone mid-shift.
+
+          ### iOS
+
+          Not attached. The `.ipa` this workflow archives is unsigned and
+          installs on nothing until it is re-signed with an Apple Developer
+          Program certificate. It is on the CI run, not here.
+          EOF
+
+      # Guarded against existing so a re-run of a green release is a no-op
+      # rather than a failure, matching the tag step above.
+      - name: Publish the GitHub Release
+        if: steps.bump.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.bump.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released; nothing to publish."
+            exit 0
+          fi
+          gh release create "$tag" \
+            "${{ steps.apk.outputs.apk }}" \
+            --title "$tag" \
+            --notes-file release-notes.md \
+            --generate-notes
+
       - name: Summary
         run: |
           if [ "${{ steps.bump.outputs.changed }}" = "true" ]; then
             echo "### Version ${{ steps.bump.outputs.version }} (${{ steps.bump.outputs.bump }} bump)" >> "$GITHUB_STEP_SUMMARY"
             echo "Android versionCode ${{ steps.bump.outputs.code }}." >> "$GITHUB_STEP_SUMMARY"
+            echo "Released as [v${{ steps.bump.outputs.version }}](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ steps.bump.outputs.version }}) with \`${{ steps.apk.outputs.apk }}\` attached." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### Version unchanged" >> "$GITHUB_STEP_SUMMARY"
             echo "Nothing to version in this push." >> "$GITHUB_STEP_SUMMARY"
