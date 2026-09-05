@@ -5,13 +5,16 @@
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
 		<!-- CI builds one platform family per job, so no runner needs the
 		     workloads for the others. Pass -p:HandAndroidOnly=true,
-		     -p:HandWindowsOnly=true or -p:HandAppleOnly=true.
+		     -p:HandWindowsOnly=true, -p:HandAppleOnly=true, or one of the two
+		     single-head narrowings (-p:HandIosOnly, -p:HandMacCatalystOnly).
 
 		     HandAppleOnly covers both Apple heads rather than splitting them: they
 		     need the same runner and share almost all of their code (Apple/**\*.cs
 		     compiles into both), and macOS runners are the slow, contended ones.
 		     MSBuild tags every diagnostic with its TargetFramework, so building the
-		     pair together still says which head broke.
+		     pair together still says which head broke. HandIosOnly exists because
+		     the CI job that archives an .ipa wants the iOS head alone — bundling
+		     is the point there, and Mac Catalyst would only be paid for twice.
 
 		     Do NOT reach for the -f (framework) option instead: that sets
 		     TargetFramework as a global property, which forces the chosen TFM onto
@@ -94,13 +97,18 @@
 		<TargetFrameworks Condition="'$(HandWindowsOnly)' == 'true'">net10.0-windows10.0.19041.0</TargetFrameworks>
 		<TargetFrameworks Condition="'$(HandAppleOnly)' == 'true'">net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 		<!--
-			MacCatalyst alone. CI uses this rather than HandAppleOnly because
-			the iOS head cannot be built without a signing identity - see the
-			note further down beside CodesignEntitlements. MacCatalyst still
-			compiles every Apple/**/*.cs source, so the coverage that job
-			exists for survives; what is lost is the iOS head's own bundling.
+			MacCatalyst alone. It compiles every Apple/**/*.cs source, so it is
+			the cheaper way to prove that shared half without an iOS toolchain's
+			signing machinery; what it does not do is bundle the iOS head or the
+			notification extension.
 		-->
 		<TargetFrameworks Condition="'$(HandMacCatalystOnly)' == 'true'">net10.0-maccatalyst</TargetFrameworks>
+		<!--
+			iOS alone, which is what the CI job that archives an .ipa builds.
+			Paired with HandUnsigned=true below — see the note beside it for why
+			the iOS head needed that before a runner could build it at all.
+		-->
+		<TargetFrameworks Condition="'$(HandIosOnly)' == 'true'">net10.0-ios</TargetFrameworks>
 
 		<OutputType>Exe</OutputType>
 		<RootNamespace>TheBleedingDeacons.Intergroup.Hand</RootNamespace>
@@ -336,28 +344,69 @@
 		<Compile Include="..\TheBleedingDeacons.Intergroup.Hand.NotificationService\SharedKeychain.cs" Link="Apple\SharedKeychain.cs" />
 	</ItemGroup>
 
+	<!--
+		Unconditional, and it stays that way. Making it depend on whether a
+		signing key happens to be present would let a device build ship
+		without the shared keychain group, and the extension would then read
+		nothing while looking perfectly healthy - which is precisely the
+		failure this feature exists to prevent.
+
+		This is also redundant: MAUI's single-project convention sets
+		CodesignEntitlements from $(iOSProjectFolder)Entitlements.plist when
+		it is empty, so deleting this line would change nothing at all. It is
+		kept because a convention that fires on a file's mere existence is not
+		where a security-relevant setting should be stated.
+	-->
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
 		<CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
 	</PropertyGroup>
 
 	<!--
-		NOTE: the iOS head cannot be built by CI while these entitlements are
-		declared. Xamarin.Shared.targets runs signing-identity detection as
-		soon as a project has entitlements, and a GitHub runner has neither a
-		certificate nor a provisioning profile, so the build stops at "No
-		valid iOS code signing keys found in keychain" before compiling.
-		Targeting the simulator does not avoid it; the detection is keyed on
-		the entitlements, not on the destination.
+		Unsigned device builds, for CI. Same shape and same property list as
+		Link's LinkUnsigned, deliberately.
 
-		The entitlements stay unconditional anyway. Making them depend on
-		whether a key happens to be present would let a device build ship
-		without the shared keychain group, and the extension would then read
-		nothing while looking perfectly healthy - which is precisely the
-		failure this feature exists to prevent.
+		An .ipa anybody can install needs an Apple Developer Program
+		membership, a distribution certificate and a provisioning profile.
+		There is none, so CI archives an unsigned build: a real compile gate
+		and a real artifact, which installs on nothing until it is re-signed.
+		Switching that on later means supplying a certificate and a profile to
+		the build, not rearranging this.
 
-		Verifying the iOS head therefore needs either a signing identity and
-		a profile carrying the App Group installed on the runner, or a Mac.
+		<b>CORRECTION, and it is worth reading before touching the group
+		above.</b> This file used to carry a long note saying the iOS head
+		could not be built by CI *at all* while the entitlements were
+		declared - that Xamarin.Shared.targets runs signing-identity detection
+		as soon as a project has entitlements, keyed on the entitlements
+		rather than on the destination.
+
+		That is wrong, and it cost this repo an unbuilt iOS head for weeks.
+		_DetectSigningIdentity is conditioned on '$(EnableCodeSigning)' ==
+		'true', not on the entitlements. Switch code signing off and the
+		detection never runs, entitlements or no entitlements. Link proves it
+		from the other direction: it has Platforms/iOS/Entitlements.plist on
+		disk and SingleProject=true, so the MAUI convention sets the property
+		there too, and its ios job is green on every push.
+
+		So nothing had to become conditional to unblock CI. What was missing
+		was this group.
+
+		<b>What an unsigned build is NOT: a check that the entitlements are
+		right.</b> It compiles the iOS head and the extension. The shared
+		keychain group and the App Group are exercised only by a Mac with a
+		real identity.
+
+		Set by the CI job rather than defaulted here, so a local macOS build
+		with a real signing identity is untouched. Passed on the command line
+		it becomes a global property, which is wanted here for once: the
+		notification extension is a separate project bundled into the .app,
+		and it has to be built unsigned too.
 	-->
+	<PropertyGroup Condition="'$(HandUnsigned)' == 'true'">
+		<EnableCodeSigning>false</EnableCodeSigning>
+		<CodesignKey></CodesignKey>
+		<CodesignProvision></CodesignProvision>
+		<DisableCodesignVerification>true</DisableCodesignVerification>
+	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Ben.Demystifier" Version="0.4.1" />

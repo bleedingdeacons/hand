@@ -38,6 +38,36 @@
 		<SingleProject>false</SingleProject>
 	</PropertyGroup>
 
+	<!--
+		Unsigned builds, for CI. The same group as the app's csproj, and it
+		has to be here as well as there.
+
+		HandUnsigned reaches this project: the CI job passes it on the command
+		line, so it is a global property and propagates through the reference.
+		What does not propagate is the PropertyGroup that acts on it — that is
+		written in the app's project file and applies to the app's project
+		file. This one saw HandUnsigned=true, had nothing to say about it, and
+		went on to fail the whole build with
+
+		    error : No valid iOS code signing keys found in keychain
+
+		while the app half beside it compiled perfectly, having switched
+		signing off. An app extension is signed in its own right, so it needs
+		telling in its own right.
+
+		NOT hoisted into Directory.Build.props, which would be the obvious
+		one-place answer. That file is byte-identical to Register's on
+		purpose — see the comment at the top of it — and a Hand-only signing
+		switch is exactly the sort of thing that ends that. Two copies and a
+		comment is the cheaper trade.
+	-->
+	<PropertyGroup Condition="'$(HandUnsigned)' == 'true'">
+		<EnableCodeSigning>false</EnableCodeSigning>
+		<CodesignKey></CodesignKey>
+		<CodesignProvision></CodesignProvision>
+		<DisableCodesignVerification>true</DisableCodesignVerification>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<None Include="Info.plist" LogicalName="Info.plist" />
 	</ItemGroup>

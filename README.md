@@ -273,6 +273,11 @@ dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandWindowsOnly=true
 dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAppleOnly=true
 ```
 
+`HandAppleOnly` builds iOS and Mac Catalyst together. Either can be had on its
+own with `-p:HandIosOnly=true` or `-p:HandMacCatalystOnly=true`; CI's iOS job
+uses the first, because bundling the head and its extension is the point there
+and Mac Catalyst would only be paid for twice.
+
 Use those flags rather than `-f`: `-f` sets `TargetFramework` as a global
 property, which forces the chosen TFM onto every project in the tree.
 
@@ -282,10 +287,11 @@ loads. Signing is opt-in: pass a keystore or the build stays unsigned.
 
 ### The quality gate
 
-CI builds the Android head and runs the tests on every push and pull request,
-and those two *are* the gate. The Windows and Apple heads have jobs of their
-own, currently gated to a manual run (Actions → CI → Run workflow) so an
-ordinary push pays for two runners rather than four. `Directory.Build.props` wires in StyleCop.Analyzers
+CI builds the Android and iOS heads and runs the tests on every push and pull
+request, and those three *are* the gate. There are no manual jobs: the Windows
+and Mac Catalyst ones this section used to describe were deleted rather than
+gated, and both heads now build only on a developer's machine.
+`Directory.Build.props` wires in StyleCop.Analyzers
 and Meziantou.Analyzer, `.editorconfig` escalates the rules that matter to
 `error`, and the csproj promotes the compiled-binding warnings (XC0022–XC0045)
 alongside them — so a style violation or a binding that quietly fell back to
@@ -293,26 +299,29 @@ reflection fails the build rather than scrolling past in the output. All three
 files are byte-identical to Register's; the two apps share one house style
 deliberately.
 
-Every head is built, because they do not report the same things and in places
-they do not even compile the same files. The WinRT and CsWinRT analyzers
-(MVVMTK0045 and friends) only fire on the Windows head, which in turn only
-exists when building on Windows at all; and `Apple/**/*.cs` is compiled only
-into the iOS and Mac Catalyst heads, so nothing but the macOS job builds those
-sources. A head nobody builds is a head nobody knows is broken — which is how
-Register's Apple heads came to rot.
+Heads do not report the same things, and in places they do not even compile the
+same files — so a head nobody builds is a head nobody knows is broken, which is
+how Register's Apple heads came to rot. `Apple/**/*.cs` compiles only into the
+iOS and Mac Catalyst heads, and for a while after the Windows and Mac Catalyst
+jobs were deleted it compiled into nothing at all. The iOS job buys that back.
 
-One job per platform family, not per head: `-p:HandAppleOnly=true` builds iOS
-and Mac Catalyst together, since they need the same runner and share nearly all
-their code. MSBuild tags each diagnostic with its target framework, so the log
-still says which head broke.
+**What still compiles nowhere.** `Platforms/Windows/**` and
+`Platforms/MacCatalyst/**`. The WinRT and CsWinRT analyzers (MVVMTK0045 and
+friends) fire only on the Windows head, which in turn only exists when building
+on Windows at all, so they are reported nowhere. Build those two locally before
+anything ships.
 
-**Run the manual jobs before anything ships.** Gating them is a speed trade,
-not a judgement that they stopped mattering — the reasoning above is exactly
-why they exist, and the Apple job is the only thing anywhere that compiles
-`Apple/**/*.cs`.
+**What the iOS job does not prove.** It builds unsigned
+(`-p:HandUnsigned=true`), so it compiles the head and the notification service
+extension and exercises neither the shared keychain group nor the App Group.
+Only a Mac with a real identity does that.
 
-The macOS job signs nothing and needs no provisioning profile — a Debug build
-with no `RuntimeIdentifier` targets the simulator.
+The csproj used to claim this job was impossible — that the entitlements the
+extension needs force signing-identity detection, which no runner can satisfy.
+That was wrong, and it left the iOS head unbuilt for weeks:
+`_DetectSigningIdentity` is conditioned on `EnableCodeSigning`, not on the
+entitlements. Switching signing off is sufficient, and the entitlements stay
+declared unconditionally, which is where a setting like that belongs.
 
 CI passes `-p:UseDevCredentials=false`, so what it analyses is the code that
 ships rather than the `USE_DEV_CREDENTIALS` convenience path. Reproduce a CI
@@ -322,8 +331,72 @@ build locally with:
 dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true -p:UseDevCredentials=false
 ```
 
-Swap in `HandWindowsOnly` or `HandAppleOnly` for the other two jobs. The Apple
-one needs a Mac.
+The iOS job, which needs a Mac:
+
+```bash
+dotnet build TheBleedingDeacons.Intergroup.Hand -c Release -p:HandIosOnly=true -p:HandUnsigned=true -p:UseDevCredentials=false -p:RuntimeIdentifier=ios-arm64
+```
+
+### What CI produces
+
+Two artifacts on every run, `hand-apk` and `hand-ipa-unsigned`, kept for
+30 days. Open the run from **Actions** and they are in the Artifacts section at
+the bottom of the summary.
+
+**And a GitHub Release on every merge to `main`.** Run artifacts expire after
+30 days, so a version older than a month had nothing to show for itself at all;
+the `version` job now tags `vX.Y.Z` and publishes a release with an APK
+attached. It is under **Releases**, and it does not expire.
+
+That APK is *rebuilt* after the version is written rather than taken from the
+build job. The build job's artifact came from the commit before the bump, so
+its manifest carries the previous version — and, more to the point, the
+previous Android `versionCode`, which is what decides whether a build can
+update an existing install. Attaching it to a tag naming the new version would
+ship an APK that disagrees with its own release.
+
+Only the APK is attached. The `.ipa` is built on a macOS runner and the release
+job is Ubuntu, and carrying it across would buy nothing: it is unsigned, so it
+installs on nothing until somebody re-signs it. It stays on the run.
+
+Tags are new here and are not load-bearing: `bump-version.sh` reads the current
+version out of the csproj, not from `git describe`. Worth knowing before
+assuming it and Link's script of the same name are interchangeable — Link's
+tags *are* load-bearing.
+
+Both are built against the **`HAND_BASE_URL`** repository variable, which CI
+writes into `appsettings.json` before compiling. Without it they come out with
+no idea which intergroup they belong to — fine for a build nobody installs, and
+useless the moment one reaches a phone, as Link's first sideloaded `.ipa`
+demonstrated by opening, offering sign-in, and failing on every call after it.
+
+Hand needs this more than Link did. Link's server address can be typed in on
+the device; Hand's cannot — `SettingsPage.xaml` marks the Reach server address
+`IsReadOnly="True"`, and `ConfigurationService` falls back to this file when
+the device preference is empty, which on a fresh install it is. So an
+unconfigured artifact cannot be pointed anywhere after the fact.
+
+Only `Reach:BaseUrl` is written. `PollSeconds` comes from the default of 20 in
+`ConfigurationService`, and the `BetterStack` section is deliberately left
+out — an artifact anybody can download has no business carrying a log-shipping
+token. The file still never enters git.
+
+Unset the variable and the old behaviour returns: a build that succeeds and an
+app that cannot reach a server. That is what a fork gets.
+
+**Neither is a shipping artifact**, and both are easy to mistake for one:
+
+* **The .ipa is unsigned.** It installs on nothing until it is re-signed with
+  an Apple Developer Program certificate. It is a compile gate for the iOS head
+  and an input to whatever does the signing later.
+* **The APK is signed with the runner's throwaway debug keystore**, which is
+  not the one on any developer machine. It will refuse to install over a
+  locally built Hand with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the only
+  way past that is `adb uninstall` — which drops the handset's enrolment and
+  its local alert history. Nothing becomes permanently unreadable the way it
+  does in Link, because Reach holds the payload key and a re-enrolled handset
+  gets a fresh one; but the handset is off the rota until somebody signs it
+  back in. Not something to do to a duty phone mid-shift.
 
 ### Tests and coverage
 
