@@ -426,9 +426,27 @@ jobs:
     # the day the iOS head has its own version.
     needs: [build, ios, test, semgrep]
 
-    # main only, and only for a real push - not for pull_request runs of this
-    # same workflow, and not for workflow_dispatch.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # main only, and never for pull_request runs of this same workflow.
+    #
+    # <b>workflow_dispatch releases too, and that is deliberate.</b> A merge is
+    # the release here, so when a merge's own run does not survive there is
+    # otherwise no second way to cut one — and a merge cannot be repeated. The
+    # PHP plugin suite learned this the hard way in the Actions outage of
+    # 2026-08-06: a run wedged at `queued` with no runner, refusing cancel
+    # ("already completed"), rerun ("already running") and force-cancel (409),
+    # and the release had to wait a day for an unrelated second PR to carry it.
+    #
+    # Safe to run twice. bump-version.sh refuses to bump when HEAD is already a
+    # `chore: version` commit, so dispatching straight after a successful
+    # release is a no-op rather than a second bump; and both the tag and the
+    # GitHub Release steps below check for the thing already existing. What a
+    # dispatch is for is the case where the push's run never produced one.
+    #
+    # It reads the range differently, which is already handled: github.event.before
+    # does not exist on a dispatch, and the bump step falls back to HEAD~1.
+    if: >
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     runs-on: ubuntu-latest
 

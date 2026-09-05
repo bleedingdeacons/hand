@@ -364,6 +364,14 @@ version out of the csproj, not from `git describe`. Worth knowing before
 assuming it and Link's script of the same name are interchangeable — Link's
 tags *are* load-bearing.
 
+**To cut a release without a merge**, run the `CI` workflow by hand on `main`
+(Actions → CI → Run workflow). It publishes exactly as a merge does. That
+exists because a merge is the release and a merge cannot be repeated, so a run
+that never survives — a wedged queue, a runner outage — would otherwise leave
+no way to release that commit at all. Running it after a successful release is
+a no-op: `bump-version.sh` refuses to bump on top of a `chore: version` commit,
+and the tag and release steps both check for the thing already existing.
+
 Both are built against the **`HAND_BASE_URL`** repository variable, which CI
 writes into `appsettings.json` before compiling. Without it they come out with
 no idea which intergroup they belong to — fine for a build nobody installs, and
