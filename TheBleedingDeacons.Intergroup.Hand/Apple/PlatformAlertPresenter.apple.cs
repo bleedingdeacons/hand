@@ -48,7 +48,7 @@ public sealed partial class PlatformAlertPresenter
 		}
 	}
 
-	private partial async Task PlatformPresentAsync(HandAlert alert)
+	private partial async Task PlatformPresentAsync(HandAlert alert, bool silent)
 	{
 		try
 		{
@@ -57,13 +57,25 @@ public sealed partial class PlatformAlertPresenter
 				Title = alert.Title,
 				Body = alert.Body,
 
-				// The alarm tone for red alone. Yellow and blue take the
-				// system's own: the siren is what this app uses to wake
+				// Meeting mode takes the sound away and nothing else. The
+				// interruption level below is untouched, so a red alert still
+				// breaks through a Focus mode and still lights the screen —
+				// a responder sitting in a meeting should still see it, they
+				// just should not be the reason a room stops.
+				//
+				// Where Android needs a whole twin channel for this, because
+				// a channel's sound is fixed once created, iOS decides per
+				// notification: no sound is simply no Sound.
+				//
+				// Otherwise the alarm tone for red alone. Yellow and blue take
+				// the system's own: the siren is what this app uses to wake
 				// people at three in the morning, and a level that may be
 				// missed has by definition not earned it.
-				Sound = alert.IsUrgent
-					? UNNotificationSound.GetSound("reach_alert.wav")
-					: UNNotificationSound.Default,
+				Sound = silent
+					? null
+					: alert.IsUrgent
+						? UNNotificationSound.GetSound("reach_alert.wav")
+						: UNNotificationSound.Default,
 			};
 
 			// <b>iOS has no full-screen intent, so the interruption level
