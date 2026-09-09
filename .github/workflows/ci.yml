@@ -91,13 +91,23 @@ name: CI
 #    this repo does not have.
 #
 # ---------------------------------------------------------------------------
-# Currently: Android and iOS on every push and pull request. Nothing by hand.
+# Currently: Android and iOS on every push and pull request. Windows on
+# request only. MacCatalyst nowhere.
 # ---------------------------------------------------------------------------
 #
 # The Windows and MacCatalyst jobs this file once described were deleted, not
 # gated behind workflow_dispatch — the paragraph claiming they were still here
 # to be run manually outlived them by some weeks, which is the sort of thing a
-# comment does when nobody has to run it. Both heads still build locally.
+# comment does when nobody has to run it.
+#
+# Windows is back, and off: see the `windows` job. What deleting it cost was
+# eight releases with a head that did not compile (#57), which is worse than
+# the stale paragraph ever was. It is disabled rather than absent precisely so
+# this comment cannot rot the same way — an `if:` that skips is visible in
+# every run's job list, where a deleted job is visible nowhere.
+#
+# MacCatalyst still builds locally and nowhere else. The gap it leaves is the
+# narrower one: the ios job already compiles every Apple/**/*.cs source.
 #
 # The ios job is not gated either, and that is a real cost worth naming: it is
 # a macOS runner, the slow and contended kind, on every push. It is free on a
@@ -334,6 +344,97 @@ jobs:
           path: hand-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+  windows:
+    name: Build & analyze (net10.0-windows)
+
+    # <b>Off by default, and the `if:` is the whole of that.</b> Nothing here
+    # runs on a push or a pull request, so this job gates no merge and costs no
+    # runner minutes until somebody asks for it.
+    #
+    # Two ways to ask. workflow_dispatch runs it once, by hand, from the
+    # Actions tab -- and from a branch rather than main, because the version
+    # job below is gated on refs/heads/main and a dispatch there would cut a
+    # release as well. Setting the repository variable HAND_BUILD_WINDOWS to
+    # `true` turns it on everywhere, permanently, without editing this file.
+    #
+    # <b>Why it is here at all.</b> The Windows head stopped compiling on
+    # 2026-09-01 and nobody found out for eight releases, because this workflow
+    # built Android and iOS and nothing else -- see #57. A job that exists and
+    # is off can be run in thirty seconds when a partial method gains an
+    # argument; a job that does not exist has to be written first, which is why
+    # the last one never was.
+    #
+    # <b>Why it is off rather than on.</b> Turning it on makes a fourth thing
+    # that can go red on every pull request, and this head has no CI history at
+    # all -- nobody knows yet whether windows-latest builds it reliably. Prove
+    # it by dispatch first; flip the variable once it has been green a few
+    # times.
+    #
+    # <b>Deliberately absent from the version job's needs:.</b> A skipped job
+    # makes its dependents skip too, so listing it there while this is off
+    # would stop every release. Add it at the same moment the variable is set
+    # and not before -- the comment there explains why ios is in that list, and
+    # the same argument applies to this head the day it is trusted.
+    if: >
+      github.event_name == 'workflow_dispatch'
+      || vars.HAND_BUILD_WINDOWS == 'true'
+
+    # Windows is not a preference: the WindowsAppSDK targets and the Windows
+    # SDK this head compiles against exist on no other runner.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout hand
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # maui-windows, not maui: the full workload would pull in the Android SDK
+      # and both Apple heads for a job that builds none of them.
+      - name: Install MAUI Windows workload
+        run: dotnet workload install maui-windows
+
+      # shell: bash because the script is bash and relies on `set -euo
+      # pipefail`. Git Bash is on the windows-latest image; the runner's default
+      # shell here is pwsh, which would run the file but not those options.
+      #
+      # Written even though this job uploads nothing, so the head compiles the
+      # way it ships -- appsettings.json is an EmbeddedResource guarded by
+      # Condition="Exists(...)", and building without one exercises a path no
+      # released build takes.
+      - name: Write appsettings.json
+        shell: bash
+        env:
+          BASE_URL: ${{ vars.HAND_BASE_URL }}
+        run: bash .github/scripts/write-appsettings.sh
+
+      # A compile gate, not an artifact. There is no Release build and nothing
+      # is uploaded: a shippable Windows build means MSIX packaging and a
+      # signing certificate, neither of which this repo has, and the failure
+      # this job exists to catch is a compile error rather than a packaging
+      # one. #57 was CS0759 -- a partial method whose Windows half had kept an
+      # old signature -- and Debug catches that in a fraction of the time.
+      #
+      # HandWindowsOnly narrows TargetFrameworks to the Windows head. Do NOT
+      # reach for -f net10.0-windows10.0.19041.0 instead: that sets
+      # TargetFramework as a global property and forces it onto Hand.Core,
+      # which is plain net10.0, and its restore fails with NU1105. The csproj
+      # says the same at more length.
+      #
+      # UseDevCredentials=false for the reason the Android job passes it: it
+      # defaults true in the csproj, so a build that left it alone would
+      # compile the convenience path and leave the shipping path unanalysed.
+      - name: Build & analyze
+        run: >
+          dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
+          -c Debug
+          -p:HandWindowsOnly=true
+          -p:UseDevCredentials=false
+          -p:ContinuousIntegrationBuild=true
 
   test:
     name: Test & coverage
