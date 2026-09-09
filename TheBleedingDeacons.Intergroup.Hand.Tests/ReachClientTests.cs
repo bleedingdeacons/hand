@@ -303,6 +303,43 @@ public sealed class ReachClientTests
 	}
 
 	[Fact]
+	public async Task ReadsAMembersNumbers()
+	{
+		var (client, handler) = Ok(
+			"""{"id":42,"mobile_number":"07700 900123","landline_number":"0117 496 0123","preferred_contact":"Landline"}""");
+
+		var result = await client.GetMemberContactAsync("t", 42, CancellationToken.None);
+
+		Assert.True(result.Success);
+		Assert.Equal(42, result.Value!.Id);
+		Assert.Equal("07700 900123", result.Value.MobileNumber);
+		Assert.Equal("0117 496 0123", result.Value.LandlineNumber);
+		Assert.Equal("Landline", result.Value.PreferredContact);
+
+		// Per member, not per page: the route that carries numbers takes
+		// an id, and there is no bulk form of it.
+		Assert.Equal(
+			"https://aa-bristol.org/wp-json/reach/v1/members/42/contact",
+			handler.Requests[0].RequestUri!.ToString());
+	}
+
+	[Fact]
+	public async Task ReadsAMemberWhoHasNoNumbersOnFile()
+	{
+		// A perfectly good answer, not a failure. Reach returns the member
+		// with both fields empty rather than a 404, and the picker says
+		// "no number on file" rather than offering to ask again.
+		var (client, _) = Ok(
+			"""{"id":42,"mobile_number":"","landline_number":"","preferred_contact":"Mobile"}""");
+
+		var result = await client.GetMemberContactAsync("t", 42, CancellationToken.None);
+
+		Assert.True(result.Success);
+		Assert.Equal(string.Empty, result.Value!.MobileNumber);
+		Assert.Equal(string.Empty, result.Value.LandlineNumber);
+	}
+
+	[Fact]
 	public async Task TreatsAnEmptyBodyOnASuccessAsAServerFault()
 	{
 		var (client, _) = Ok("null");
