@@ -471,39 +471,6 @@ public static class MauiProgram
 	}
 
 	/// <summary>
-	/// The User-Agent every request this app makes carries — <c>Hand/1.18.0
-	/// (Android)</c>.
-	/// </summary>
-	/// <remarks>
-	/// Set explicitly because .NET sends none of its own, which leaves whatever
-	/// the platform handler defaults to. On Android that is a bare
-	/// <c>Dalvik/2.1.0 (Linux; U; Android 16; SM-S926B Build/…)</c> — it names
-	/// the runtime and the handset model and says nothing about the app, so
-	/// every Hand handset is indistinguishable in an access log from any other
-	/// Android process on the network.
-	///
-	/// That anonymity has a cost beyond diagnostics. An unidentified Dalvik
-	/// client polling a REST API on a fixed interval is the shape bot
-	/// protection scores worst, and on 2026-09-09 SiteGround's Anti-Bot AI
-	/// flagged one network's address on exactly that profile: every handset
-	/// behind it got a JavaScript challenge page where the JSON should have
-	/// been, sign-in included, and a native client cannot answer one. Reach was
-	/// healthy throughout — the requests never reached it.
-	///
-	/// This is not a defence against that happening again, and must not be
-	/// mistaken for one: the same host fingerprints the TLS handshake (JA4),
-	/// which no header changes. The fix for a challenged API is the server
-	/// exempting it. This is here so the traffic is attributable, and so it is
-	/// not sitting in the anonymous bucket to start with.
-	/// </remarks>
-	private static System.Net.Http.Headers.ProductInfoHeaderValue[] UserAgent()
-	=>
-	[
-		new("Hand", AppInfo.Current.VersionString),
-		new($"({DeviceInfo.Current.Platform})"),
-	];
-
-	/// <summary>
 	/// An HttpClient backed by the platform's native HTTP handler. See the
 	/// registration above for why that matters.
 	/// </summary>
@@ -539,7 +506,11 @@ public static class MauiProgram
 		};
 #endif
 
-		var client = new HttpClient(handler, disposeHandler: true)
+		// Wrapped round the platform handler rather than set on the client:
+		// part of what the header reports is the server this handset is
+		// pointed at, and a responder can change that from the settings
+		// screen without restarting the app. See UserAgentHandler.
+		return new HttpClient(new UserAgentHandler(AppUserAgent.Current, handler), disposeHandler: true)
 		{
 			// Tighter than Register's 100s: every call this client makes is on a
 			// path where a responder is waiting, and a request still outstanding
@@ -547,13 +518,6 @@ public static class MauiProgram
 			// concerned. The poll retries on its next tick regardless.
 			Timeout = TimeSpan.FromSeconds(30),
 		};
-
-		foreach (var product in UserAgent())
-		{
-			client.DefaultRequestHeaders.UserAgent.Add(product);
-		}
-
-		return client;
 	}
 
 	/// <summary>
@@ -573,19 +537,15 @@ public static class MauiProgram
 				| System.Net.DecompressionMethods.Brotli,
 		};
 
-		var client = new HttpClient(handler, disposeHandler: true)
+		// Better Stack gets the same introduction as Reach does. It is not
+		// behind the bot protection this was written for, but a log shipper
+		// that names itself is worth having in its own right.
+		return new HttpClient(new UserAgentHandler(AppUserAgent.Current, handler), disposeHandler: true)
 		{
 			// Fail fast and let the durable sink retry from its on-disk buffer
 			// rather than blocking shutdown behind a slow response.
 			Timeout = TimeSpan.FromSeconds(30),
 		};
-
-		foreach (var product in UserAgent())
-		{
-			client.DefaultRequestHeaders.UserAgent.Add(product);
-		}
-
-		return client;
 	}
 
 	public static string AppVersion()
