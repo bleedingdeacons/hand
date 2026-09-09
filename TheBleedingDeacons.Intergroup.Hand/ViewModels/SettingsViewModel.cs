@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Serilog;
+using TheBleedingDeacons.Intergroup.Hand.Models;
 using TheBleedingDeacons.Intergroup.Hand.Support;
 using TheBleedingDeacons.Intergroup.Hand.Services.Interfaces;
 
@@ -16,6 +17,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 	private readonly IDeviceAuthService _auth;
 	private readonly IAlertService _alerts;
 	private readonly IAppLock _lock;
+	private readonly IPushRegistrar _push;
+	private readonly INotificationPermission _notifications;
 
 
 	/// <summary>
@@ -28,12 +31,16 @@ public sealed partial class SettingsViewModel : ObservableObject
 		IConfigurationService configuration,
 		IDeviceAuthService auth,
 		IAlertService alerts,
-		IAppLock appLock)
+		IAppLock appLock,
+		IPushRegistrar push,
+		INotificationPermission notifications)
 	{
 		_configuration = configuration;
 		_auth = auth;
 		_alerts = alerts;
 		_lock = appLock;
+		_push = push;
+		_notifications = notifications;
 
 		// <b>Held shut while the stored values are loaded in.</b> Setting
 		// these raises the toggle handlers, which apply — so a handset with
@@ -73,6 +80,39 @@ public sealed partial class SettingsViewModel : ObservableObject
 			Log.Warning(ex, "Fingerprint availability could not be read");
 			FingerprintAvailable = false;
 		}
+
+		await RefreshPushAsync().ConfigureAwait(true);
+	}
+
+	/// <summary>
+	/// Work out whether push is both available and enabled, and say so.
+	///
+	/// <para>Read on every visit rather than cached, for the same reason
+	/// the fingerprint is: the two ways this goes wrong are both fixed
+	/// somewhere other than in Hand — notifications are switched back on
+	/// from the phone's own settings, and a registration is restored by
+	/// signing in again — so a responder who has just gone and done one of
+	/// them must find the indicator agreeing with them when they come
+	/// back.</para>
+	///
+	/// <para>The registration half is Reach's own answer, taken from the
+	/// session it returned, not from whether this side holds a token.
+	/// Those disagree in exactly the case worth catching: a handset with a
+	/// perfectly good FCM token that the server was never told about.
+	/// </para>
+	/// </summary>
+	private async Task RefreshPushAsync()
+	{
+		// ConfigureAwait(true): the property set below drives a label and a
+		// coloured dot on screen.
+		var permitted = await _notifications.IsGrantedAsync().ConfigureAwait(true);
+
+		Push = new PushStatus(
+			Supported: _push.Provider.Length > 0,
+			Permitted: permitted,
+			Registered: !string.IsNullOrEmpty(_auth.Current?.PushProvider));
+
+		Log.Debug("Push indicator reports {State}", Push.State);
 	}
 
 	[ObservableProperty]
@@ -119,10 +159,32 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 	public string Responder => _auth.Current?.Responder ?? "Not signed in";
 
-	public string DeliveryMode =>
-		string.IsNullOrEmpty(_auth.Current?.PushProvider)
-			? "Polling — this handset collects its own alerts"
-			: "Push — alerts arrive as soon as they are raised";
+	/// <summary>
+	/// Whether push is available on this platform and enabled on this
+	/// phone, as one thing the screen can draw.
+	///
+	/// <para>This replaced a one-line "Push" / "Polling" label. That line
+	/// read the same for a handset with no push transport as for one whose
+	/// owner had switched Hand's notifications off — two states with
+	/// nothing in common, one of which is a responder's own phone quietly
+	/// swallowing every alert. See <see cref="PushStatus"/>.</para>
+	///
+	/// <para>Flattened onto three properties rather than left as a nested
+	/// binding path, because this project compiles its XAML bindings and
+	/// keeps them shallow; see <see cref="PushHeadline"/> and its
+	/// neighbours.</para>
+	/// </summary>
+	[ObservableProperty]
+	[NotifyPropertyChangedFor(nameof(PushHeadline))]
+	[NotifyPropertyChangedFor(nameof(PushDetail))]
+	[NotifyPropertyChangedFor(nameof(PushIndicatorColour))]
+	public partial PushStatus Push { get; set; } = PushStatus.Unknown;
+
+	public string PushHeadline => Push.Headline;
+
+	public string PushDetail => Push.Detail;
+
+	public string PushIndicatorColour => Push.IndicatorColour;
 
 	/// <summary>
 	/// Version, build number, build timestamp and runtime, exactly as the
