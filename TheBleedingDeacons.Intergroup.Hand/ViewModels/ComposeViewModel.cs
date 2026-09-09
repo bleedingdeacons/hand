@@ -23,6 +23,16 @@ namespace TheBleedingDeacons.Intergroup.Hand.ViewModels;
 /// A member is chosen by id and resolved server-side — see
 /// <see cref="HandMember"/> — which is what makes a directory on every
 /// handset acceptable.</para>
+///
+/// <para><b>Phone numbers are fetched a member at a time, and only when
+/// asked for.</b> A responder who has found somebody here often needs to
+/// ring them rather than message them, so <see cref="ShowContactCommand"/>
+/// puts the numbers on the row. It is a press rather than part of the
+/// load because Reach audits every one against the member and counts it
+/// against an hourly cap — fetching the page's worth would spend both on
+/// names nobody looked at, and would put the directory's numbers on the
+/// handset wholesale, which is the thing the split exists to
+/// prevent.</para>
 /// </summary>
 public sealed partial class ComposeViewModel : ObservableObject
 {
@@ -290,6 +300,83 @@ public sealed partial class ComposeViewModel : ObservableObject
 		if (!string.IsNullOrEmpty(level))
 		{
 			Level = level;
+		}
+	}
+
+	/// <summary>
+	/// Put one member's phone numbers on their row.
+	///
+	/// <para>Asked for per member and never in bulk — see the class
+	/// summary. A member already showing, or already being fetched, is
+	/// left alone: a second press would spend another of the responder's
+	/// hourly allowance and write another audit row to be told what is
+	/// already on screen. This is the same guard
+	/// <see cref="IAlertService.ShowContactAsync"/> uses on an
+	/// alert.</para>
+	///
+	/// <para>Failure leaves the row as it was, with the reason in
+	/// <see cref="Status"/>. Nothing is half-filled: a row showing one
+	/// number because the other request failed would read as a member
+	/// with one number.</para>
+	/// </summary>
+	[RelayCommand]
+	private async Task ShowContactAsync(HandMember? member)
+	{
+		if (member is null || member.IsContactShown || member.IsLoadingContact)
+		{
+			return;
+		}
+
+		var token = await _configuration.GetDeviceTokenAsync().ConfigureAwait(false);
+		if (string.IsNullOrEmpty(token))
+		{
+			Status = "This handset is not signed in.";
+			return;
+		}
+
+		await MainThread
+			.InvokeOnMainThreadAsync(() => member.IsLoadingContact = true)
+			.ConfigureAwait(false);
+
+		try
+		{
+			var result = await _reach
+				.GetMemberContactAsync(token, member.Id, CancellationToken.None)
+				.ConfigureAwait(false);
+
+			if (!result.Success || result.Value is null)
+			{
+				Log.Warning(
+					"Contact for member {MemberId} could not be fetched: {Failure} {Message}",
+					member.Id, result.Failure, result.Message);
+
+				Status = result.Message.Length > 0
+					? result.Message
+					: "Those contact details could not be fetched.";
+				return;
+			}
+
+			var contact = result.Value;
+
+			await MainThread.InvokeOnMainThreadAsync(() =>
+			{
+				member.MobileNumber = contact.MobileNumber;
+				member.LandlineNumber = contact.LandlineNumber;
+				member.PreferredContact = contact.PreferredContact;
+
+				// Last, and set whatever came back: it is what turns the
+				// button into either the numbers or "no number on file",
+				// and a member with neither has still been answered for.
+				member.IsContactShown = true;
+			}).ConfigureAwait(false);
+
+			Log.Information("Contact details viewed for member {MemberId}", member.Id);
+		}
+		finally
+		{
+			await MainThread
+				.InvokeOnMainThreadAsync(() => member.IsLoadingContact = false)
+				.ConfigureAwait(false);
 		}
 	}
 

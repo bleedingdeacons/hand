@@ -67,6 +67,23 @@ public interface IReachClient
 	Task<ReachResult<string>> GetContactAsync(string token, long alertId, CancellationToken cancellationToken);
 
 	/// <summary>
+	/// Fetch one member's phone numbers, so a responder can ring the
+	/// person they have just picked out of the directory.
+	///
+	/// <para>One member at a time, and only when asked. The list this
+	/// complements carries the whole directory a page at a time and
+	/// deliberately holds no numbers: putting them there would let a
+	/// handset copy every number an intergroup has in a couple of
+	/// requests. Reach writes an audit row against the member for each
+	/// call and counts it against an hourly cap, so calling this
+	/// speculatively — for every row on screen, say — spends a
+	/// responder's allowance and their audit trail on names nobody
+	/// looked at.</para>
+	/// </summary>
+	Task<ReachResult<HandMemberContact>> GetMemberContactAsync(
+		string token, long memberId, CancellationToken cancellationToken);
+
+	/// <summary>
 	/// Tell Reach this handset could not read an alert.
 	///
 	/// <para>Reach can see that a device row has no key. It cannot see a

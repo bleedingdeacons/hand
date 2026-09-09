@@ -144,6 +144,59 @@
                                     FontSize="12"
                                     Opacity="0.6"
                                     IsVisible="{Binding ReachabilityNote, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <!--
+                                    The numbers, asked for a member at a
+                                    time. Reach audits every read and counts
+                                    it against an hourly cap, so this is a
+                                    press rather than part of the list: see
+                                    ComposeViewModel.ShowContactAsync.
+
+                                    Deliberately not a tel: link. Nothing
+                                    else in this app dials for the responder
+                                    — an alert's contact is shown the same
+                                    way — and a number that dials on a
+                                    mis-tap is the wrong thing to introduce
+                                    on a screen somebody is scrolling.
+
+                                    The two lines are ordered by the model,
+                                    preferred first; see
+                                    HandMember.FirstNumberLine.
+                                -->
+                                <Button
+                                    Text="Show number"
+                                    Margin="0,4,0,0"
+                                    Padding="12,0"
+                                    FontSize="13"
+                                    HeightRequest="36"
+                                    HorizontalOptions="Start"
+                                    BackgroundColor="Transparent"
+                                    BorderWidth="1"
+                                    IsVisible="{Binding IsContactShown, Converter={toolkit:InvertedBoolConverter}}"
+                                    IsEnabled="{Binding IsLoadingContact, Converter={toolkit:InvertedBoolConverter}}"
+                                    Command="{Binding ViewModel.ShowContactCommand, Source={x:Reference Page}, x:DataType=views:ComposePage}"
+                                    CommandParameter="{Binding .}" />
+
+                                <ActivityIndicator
+                                    IsRunning="{Binding IsLoadingContact}"
+                                    IsVisible="{Binding IsLoadingContact}"
+                                    HorizontalOptions="Start" />
+
+                                <Label
+                                    Text="{Binding FirstNumberLine}"
+                                    FontSize="15"
+                                    IsVisible="{Binding FirstNumberLine, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <Label
+                                    Text="{Binding SecondNumberLine}"
+                                    FontSize="15"
+                                    IsVisible="{Binding SecondNumberLine, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
+
+                                <Label
+                                    Text="{Binding NoNumberNote}"
+                                    FontSize="12"
+                                    Opacity="0.6"
+                                    IsVisible="{Binding NoNumberNote, Converter={toolkit:IsStringNotNullOrEmptyConverter}}" />
                             </VerticalStackLayout>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>

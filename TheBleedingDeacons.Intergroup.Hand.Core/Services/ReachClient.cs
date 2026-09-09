@@ -206,6 +206,21 @@ public sealed class ReachClient : IReachClient
 			: ReachResult<IReadOnlyList<HandMember>>.Fail(result.Failure, result.Message);
 	}
 
+	public async Task<ReachResult<HandMemberContact>> GetMemberContactAsync(
+		string token, long memberId, CancellationToken cancellationToken)
+	{
+		var result = await SendAsync<HandMemberContact>(
+			HttpMethod.Get,
+			$"members/{memberId}/contact",
+			body: null,
+			token,
+			cancellationToken).ConfigureAwait(false);
+
+		return result.Success && result.Value is not null
+			? ReachResult<HandMemberContact>.Ok(result.Value)
+			: ReachResult<HandMemberContact>.Fail(result.Failure, result.Message);
+	}
+
 	public async Task<ReachResult<IReadOnlyList<HandCommittee>>> GetCommitteesAsync(
 		string token, CancellationToken cancellationToken)
 	{

@@ -307,6 +307,33 @@ internal sealed class FakeReachClient : IReachClient
 		string token, CancellationToken cancellationToken) =>
 		Task.FromResult(Committees);
 
+	/// <summary>
+	/// What a contact lookup answers. Both numbers, so the default
+	/// exercises the case where a preference actually has two things to
+	/// choose between.
+	/// </summary>
+	public ReachResult<HandMemberContact> MemberContact { get; set; } =
+		ReachResult<HandMemberContact>.Ok(new HandMemberContact
+		{
+			Id = 1,
+			MobileNumber = "07700 900123",
+			LandlineNumber = "0117 496 0123",
+			PreferredContact = "Mobile",
+		});
+
+	/// <summary>
+	/// Every member whose numbers were asked for, in order — so a test
+	/// can say that the picker asked once, or did not ask at all.
+	/// </summary>
+	public List<long> MemberContactsRequested { get; } = [];
+
+	public Task<ReachResult<HandMemberContact>> GetMemberContactAsync(
+		string token, long memberId, CancellationToken cancellationToken)
+	{
+		MemberContactsRequested.Add(memberId);
+		return Task.FromResult(MemberContact);
+	}
+
 	public Task<ReachResult<bool>> SendAlertAsync(
 		string token,
 		string subject,
