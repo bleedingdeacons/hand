@@ -487,8 +487,14 @@ jobs:
           # brought in.
           fetch-depth: 0
 
-      - name: Compute and apply the bump
+      - name: Compute, commit and push the bump
         id: bump
+        # One step where there were two, deliberately. Losing the push race
+        # means recomputing the version, and every later step in this job reads
+        # `steps.bump.outputs.*` — so the recomputed number has to be emitted
+        # under *this* id, or the tag, the APK and the release would all name a
+        # version that was never committed.
+        #
         # Invoked through bash rather than directly: this repo is authored on
         # Windows, where git frequently does not record the executable bit, and
         # a missing +x would fail the run for a reason nothing in the diff shows.
@@ -497,69 +503,91 @@ jobs:
         # all-zeros on a branch's first push, and can point at a commit this
         # clone does not have after a force-push, so fall back to HEAD~1.
         run: |
+          set -euo pipefail
+
+          csproj="TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj"
+
           before="${{ github.event.before }}"
           if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
             echo "No usable github.event.before; falling back to HEAD~1."
             before="HEAD~1"
           fi
-          bash .github/scripts/bump-version.sh "${before}..HEAD"
 
-      - name: Commit the new version
-        if: steps.bump.outputs.changed == 'true'
-        run: |
+          # Resolve the range to concrete SHAs now, before anything moves HEAD.
+          # The retry below resets onto a new main, and a range ending in the
+          # literal "HEAD" would quietly start naming a different set of
+          # commits — somebody else's included, which is how a bump comes to
+          # double-count.
+          range="$(git rev-parse "$before")..$(git rev-parse HEAD)"
+          echo "Versioning $range"
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # [skip ci] so this push does not re-run the build jobs against a
-          # commit whose only change is a version string. The script also
-          # refuses to bump when HEAD is already a version commit, so the loop
-          # is closed twice over — belt and braces, because a runaway here
-          # would bump on every iteration.
-          git commit -am "chore: version ${{ steps.bump.outputs.version }} [skip ci]"
 
-          # Rebase onto anything that landed while this job was running, and
-          # retry. A bare `git push` here fails outright when main has moved
-          # between the checkout above and this line, and that is not
-          # hypothetical — it cost Link a whole release on 2026-09-05, when a
-          # merge landed sixteen seconds before this push. Every gate had
-          # passed; the version was simply lost, and the next release skipped
-          # a number to catch up. Hand's job is Link's, ported, so it had the
-          # identical exposure and had simply not been unlucky yet.
+          # Returns non-zero when there was nothing to version, so the caller
+          # can stop. [skip ci] keeps this push from re-running the build jobs
+          # against a commit whose only change is a version string.
+          bump_and_commit() {
+            bash .github/scripts/bump-version.sh "$range"
+            if git diff --quiet -- "$csproj"; then
+              return 1
+            fi
+            version="$(sed -n 's|.*<ApplicationDisplayVersion>\([^<]*\)</ApplicationDisplayVersion>.*|\1|p' "$csproj" | head -1)"
+            git commit -am "chore: version $version [skip ci]"
+            echo "Committed version $version."
+          }
+
+          if ! bump_and_commit; then
+            echo "Nothing to version in this push."
+            exit 0
+          fi
+
+          # Losing this race is ordinary, not exceptional: the gates above take
+          # minutes, and anything merged in that window pushes its own version
+          # commit first. So recompute rather than replay.
           #
-          # The concurrency group above serialises this job against *itself*,
-          # so the race is never two version jobs. It is a person merging
-          # while one is in flight, which no amount of job-level concurrency
-          # can prevent — the other writer is not a job.
+          # Replaying is what used to happen here, and it silently cost a
+          # version. The job committed the number it computed at checkout and,
+          # on rejection, rebased that stale commit onto the winner's — two
+          # writers editing the same csproj line, so the rebase conflicted
+          # every time and the job aborted. On 2026-09-09 the runs for #52 and
+          # #53 both computed against 1.17.2; #53 pushed 1.18.0 and #52's
+          # 1.17.3 conflicted and was lost, leaving a red run on main with all
+          # four gates green.
           #
-          # Rebasing is safe for the version this job computed. The bump is
-          # derived from the commit range this run was triggered for, and the
-          # commits that arrived meanwhile are not in that range: they get
-          # their own run and their own bump. Landing this commit on top of
-          # them skips nothing and double-counts nothing.
+          # The comment that stood here argued a conflict was impossible,
+          # because the concurrency group serialises this job against itself.
+          # It does — but each run computes its number from a checkout taken
+          # before the other pushed, so serialising when they *run* does not
+          # make either number current. The staleness is established at
+          # checkout, which no amount of job-level concurrency can reach.
           #
-          # A conflict is deliberately not retried. The only way to conflict
-          # is another writer touching the same version line, which the
-          # concurrency group already rules out for this job — so it means
-          # something genuinely unexpected, and failing loudly beats
-          # resolving it blind.
-          #
-          # Note the plugin repos solve this a shorter way, with an
-          # unconditional `git pull --rebase` before the push. That closes the
-          # long window (the minutes spent building) but leaves a short one
-          # between the pull and the push. This form has no such gap, which is
-          # why it is the one used here and in Link rather than the other.
+          # On rejection, then: throw the commit away, take main as it now is,
+          # and bump again from the same fixed range. #52's fix recomputed
+          # against 1.18.0 gives 1.18.1 — its own version, nothing skipped and
+          # nothing counted twice.
           for attempt in 1 2 3; do
             if git push; then
               echo "Pushed the version commit on attempt $attempt."
               exit 0
             fi
-            echo "Push rejected on attempt $attempt; main moved. Rebasing onto it."
-            if ! git pull --rebase origin main; then
-              echo "Rebase onto main failed; leaving it alone." >&2
-              git rebase --abort || true
-              exit 1
+
+            echo "Push rejected on attempt $attempt; main moved. Recomputing against it."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # The reset lands on somebody else's version commit, which
+            # bump-version.sh refuses to bump on top of by default. Lifting
+            # that guard is the entire point of this path, and this loop is
+            # what bounds it.
+            export HAND_BUMP_ON_VERSION_COMMIT=1
+            if ! bump_and_commit; then
+              echo "Nothing left to version once main was taken into account."
+              exit 0
             fi
           done
+
           echo "Could not push the version commit after 3 attempts." >&2
           exit 1
 

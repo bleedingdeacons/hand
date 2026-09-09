@@ -52,14 +52,23 @@ emit() { # emit <key> <value> — GitHub output when in CI, otherwise just echo
 
 # Never bump on top of a bump. Closes two cases: the push this workflow makes
 # itself, which would otherwise loop, and a manual re-run of an older push.
-head_subject="$(git log -1 --format='%s')"
-case "$head_subject" in
-    "chore: version "*)
-        echo "HEAD is already a version commit; nothing to do."
-        emit changed false
-        exit 0
-        ;;
-esac
+#
+# HAND_BUMP_ON_VERSION_COMMIT=1 lifts the guard, and only the push-retry loop
+# in ci.yml's version job sets it. That path has already reset onto a main
+# whose tip *is* somebody else's version commit, and its whole purpose is to
+# recompute its own bump from that new base — precisely what this guard would
+# otherwise refuse. It is bounded by that loop's three attempts, so lifting it
+# cannot run away. Nothing else should ever set it.
+if [ "${HAND_BUMP_ON_VERSION_COMMIT:-}" != "1" ]; then
+    head_subject="$(git log -1 --format='%s')"
+    case "$head_subject" in
+        "chore: version "*)
+            echo "HEAD is already a version commit; nothing to do."
+            emit changed false
+            exit 0
+            ;;
+    esac
+fi
 
 current="$(cat "$CSPROJ")"
 base_version="$(read_prop "$current" ApplicationDisplayVersion)"
