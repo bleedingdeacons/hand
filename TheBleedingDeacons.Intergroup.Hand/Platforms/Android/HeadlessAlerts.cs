@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Serilog;
 using TheBleedingDeacons.Intergroup.Hand.Models;
 using TheBleedingDeacons.Intergroup.Hand.Services;
+using TheBleedingDeacons.Intergroup.Hand.Support;
 
 namespace TheBleedingDeacons.Intergroup.Hand.Platforms.Android;
 
@@ -109,13 +110,13 @@ internal static class HeadlessAlerts
 
 			using var http = new HttpClient { Timeout = ReportBudget };
 
-			// Identify the app, for the reasons MauiProgram.UserAgent gives at
+			// Identify the app, for the reasons Hand.Core's UserAgent gives at
 			// length. This client is built here rather than resolved from the
 			// container — there is no container on this path — so it does not
-			// inherit that one's header and has to say so itself. Always
-			// Android: this file compiles into no other head.
-			http.DefaultRequestHeaders.UserAgent.ParseAdd(
-				$"Hand/{AppInfo.Current.VersionString} (Android)");
+			// inherit the wrapped handler that labels every other request the
+			// app makes, and has to say so itself. One request, so the header
+			// is set on the client rather than per send.
+			http.DefaultRequestHeaders.UserAgent.ParseAdd(AppUserAgent.Current());
 
 			using var request = new HttpRequestMessage(
 				HttpMethod.Post,
