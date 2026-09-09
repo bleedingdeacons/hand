@@ -78,11 +78,28 @@ public class ReachConfiguration
 	/// </remarks>
 	public bool Poll { get; set; } = true;
 
+	/// <summary>
+	/// Whether this names somewhere Hand is willing to talk to.
+	///
+	/// <para>HTTPS only, and http:// is not a development convenience here.
+	/// The settings page binds <see cref="BaseUrl"/> two-way and saves it
+	/// straight through, so a responder who pastes a plaintext address puts
+	/// the bearer device token and every alert body on the wire in the
+	/// clear, with nothing in the app saying it happened.</para>
+	///
+	/// <para>CI has been stricter than the app for as long as
+	/// write-appsettings.sh has refused a HAND_BASE_URL that does not start
+	/// with https://. This is the runtime matching the build.</para>
+	///
+	/// <para>ReachClient checks this before every request and
+	/// SignInViewModel before offering sign-in, so a plaintext address fails
+	/// closed rather than downgrading quietly.</para>
+	/// </summary>
 	public bool IsValid()
 	{
 		return !string.IsNullOrWhiteSpace(BaseUrl)
 			&& Uri.TryCreate(BaseUrl, UriKind.Absolute, out var parsed)
-			&& (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps);
+			&& parsed.Scheme == Uri.UriSchemeHttps;
 	}
 
 	/// <summary>

@@ -22,6 +22,23 @@ public static class MauiProgram
 
 	public static MauiApp CreateMauiApp()
 	{
+#if IOS || MACCATALYST
+		// Keep everything SecureStorage writes on the handset that wrote it.
+		//
+		// MAUI's own default is AfterFirstUnlock, which is included in
+		// encrypted device backups and restores onto a different device — so
+		// the device token and payload key would reconstitute a working Reach
+		// enrolment on a handset the intergroup never enrolled. ThisDeviceOnly
+		// has identical unlock semantics, which matters here because a push can
+		// arrive on a locked phone, and excludes the item from migration.
+		//
+		// This is the iOS counterpart of allowBackup="false" on Android, and it
+		// must be set before anything reads or writes SecureStorage. Items
+		// already stored keep the attribute they were written with; those
+		// follow at the next enrolment.
+		SecureStorage.DefaultAccessible = Security.SecAccessible.AfterFirstUnlockThisDeviceOnly;
+#endif
+
 		var builder = MauiApp.CreateBuilder();
 
 		// ── Load appsettings.json from embedded resource ──────────────
