@@ -142,6 +142,13 @@ public static class MauiProgram
 		// ── Hand services ─────────────────────────────────────────────
 		builder.Services.AddSingleton<IReachClient, ReachClient>();
 		builder.Services.AddSingleton<IPushRegistrar, PushRegistrar>();
+
+		// Reads the notification permission for the settings indicator and
+		// never asks for it. Stateless, so a singleton is the cheapest
+		// registration rather than a lifetime decision — and it caches
+		// nothing, because the permission is changed outside the app.
+		builder.Services.AddSingleton<INotificationPermission, NotificationPermission>();
+
 		builder.Services.AddSingleton<ILockScreenPrivacy, LockScreenPrivacy>();
 
 		// The fingerprint gate. Stateless — it holds no unlocked flag,

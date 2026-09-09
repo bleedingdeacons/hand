@@ -35,10 +35,36 @@
                 FontSize="18"
                 Text="{Binding Responder}" />
 
+            <!--
+                Whether push is available on this platform and enabled on
+                this phone. A dot and a headline, with the detail
+                underneath.
+
+                It replaced a single line that said "Push" or "Polling",
+                which read identically for a Windows head that has never
+                had push and for a responder's phone whose owner had
+                switched Hand's notifications off in error. Only one of
+                those is a handset about to swallow an alert, and the
+                colour is what separates them at a glance: green working,
+                amber still covered by the poll, red silenced, grey no
+                transport at all. See PushStatus.
+            -->
+            <HorizontalStackLayout Spacing="8">
+                <BoxView
+                    BackgroundColor="{Binding PushIndicatorColour}"
+                    CornerRadius="6"
+                    HeightRequest="12"
+                    VerticalOptions="Center"
+                    WidthRequest="12" />
+                <Label
+                    FontSize="13"
+                    Text="{Binding PushHeadline}"
+                    VerticalOptions="Center" />
+            </HorizontalStackLayout>
             <Label
-                FontSize="13"
-                Opacity="0.7"
-                Text="{Binding DeliveryMode}" />
+                FontSize="12"
+                Opacity="0.6"
+                Text="{Binding PushDetail}" />
 
             <BoxView
                 Margin="0,8"
