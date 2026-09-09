@@ -1,6 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true"></application>
+	<application android:allowBackup="false"
+	             android:icon="@mipmap/appicon"
+	             android:roundIcon="@mipmap/appicon_round"
+	             android:supportsRtl="true">
+		<!--
+			allowBackup is false deliberately.
+
+			Android's auto-backup collects the app's private data, and
+			FileSystem.AppDataDirectory - where AlertHistoryStore keeps up
+			to 500 alerts as unencrypted JSON - is precisely what it
+			collects. A night's callback records for an AA helpline, names
+			and numbers and whatever a caller said, would be uploaded to
+			the responder's Google account and restored onto whatever
+			handset that account next signs into. AlertHistory's own
+			documentation says a handset taken off the rota should not
+			leave a readable record of a night's callbacks behind it: that
+			was true of uninstall and false of backup.
+
+			It would also carry the SecureStorage-backed device token and
+			payload key, putting a working credential for one responder's
+			Reach enrolment onto a device the intergroup never enrolled.
+
+			The cost is that a responder restoring a phone signs in again
+			and starts with an empty history. Both are the correct trade.
+		-->
+	</application>
 
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
