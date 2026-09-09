@@ -106,7 +106,28 @@ public static class AlertPayloadCipher
 	}
 
 	/// <summary>
-	/// Undo the server's <c>gzencode</c>, or null if it will not undo.
+	/// The most a payload may inflate to. Far above any real alert — Reach
+	/// sends a handful of short strings — and low enough that a compression
+	/// bomb costs nothing worth measuring.
+	/// </summary>
+	private const int MaxInflatedBytes = 512 * 1024;
+
+	/// <summary>
+	/// Undo the server's <c>gzencode</c>, or null if it will not undo, or
+	/// will not stop.
+	///
+	/// <para>Copied through a fixed buffer with a running total rather than
+	/// <c>CopyTo</c>, which inflates into an unbounded MemoryStream. Here
+	/// that is belt and braces: the GCM tag is verified before this is
+	/// reached, with a key only this handset and Reach hold, so a forged
+	/// payload cannot get this far. Link has the same code and no such
+	/// guarantee — its content key is wrapped to a public key anyone can
+	/// mint against — so there the ceiling is the only thing in front of
+	/// the inflate. Keeping the two the same means the weaker one cannot
+	/// quietly drift.</para>
+	///
+	/// <para>Overflow returns null, which needs no new handling from
+	/// callers: "will not open" is already one outcome here.</para>
 	/// </summary>
 	private static byte[]? Inflate(byte[] compressed)
 	{
@@ -116,7 +137,18 @@ public static class AlertPayloadCipher
 			using var gzip = new GZipStream(source, CompressionMode.Decompress);
 			using var inflated = new MemoryStream();
 
-			gzip.CopyTo(inflated);
+			var buffer = new byte[8192];
+			int read;
+
+			while ((read = gzip.Read(buffer, 0, buffer.Length)) > 0)
+			{
+				if (inflated.Length + read > MaxInflatedBytes)
+				{
+					return null;
+				}
+
+				inflated.Write(buffer, 0, read);
+			}
 
 			return inflated.ToArray();
 		}
