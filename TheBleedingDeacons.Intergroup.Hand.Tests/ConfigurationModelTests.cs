@@ -12,14 +12,14 @@ public sealed class ReachConfigurationTests
 {
 	[Theory]
 	[InlineData("https://aa-bristol.org/", true)]
-	[InlineData("http://localhost:8080/", true)]
+	[InlineData("http://localhost:8080/", false)]
 	[InlineData("https://aa-bristol.org/wp", true)]
 	[InlineData("", false)]
 	[InlineData("   ", false)]
 	[InlineData("aa-bristol.org", false)]
 	[InlineData("ftp://aa-bristol.org/", false)]
 	[InlineData("hand://auth", false)]
-	public void IsValid_AcceptsOnlyAnAbsoluteHttpUrl(string baseUrl, bool expected) =>
+	public void IsValid_AcceptsOnlyAnAbsoluteHttpsUrl(string baseUrl, bool expected) =>
 		Assert.Equal(expected, new ReachConfiguration { BaseUrl = baseUrl }.IsValid());
 
 	/// <summary>
@@ -157,10 +157,17 @@ public sealed class BetterStackConfigurationTests
 		Assert.False(new BetterStackConfiguration { SourceToken = "t", Endpoint = "" }.IsValid());
 	}
 
-	/// <summary>A scheme we do not recognise is left alone, and refused.</summary>
-	[Fact]
-	public void IsValid_RefusesANonHttpScheme() =>
-		Assert.False(new BetterStackConfiguration { SourceToken = "t", Endpoint = "ftp://logs.example" }.IsValid());
+	/// <summary>
+	/// A scheme we do not recognise is left alone, and refused. So is
+	/// http://: the endpoint is editable, and BetterStackHttpClient
+	/// attaches the source token as a Bearer header on every batch.
+	/// </summary>
+	[Theory]
+	[InlineData("ftp://logs.example")]
+	[InlineData("http://logs.example")]
+	[InlineData("http://localhost:9000")]
+	public void IsValid_RefusesAnythingButHttps(string endpoint) =>
+		Assert.False(new BetterStackConfiguration { SourceToken = "t", Endpoint = endpoint }.IsValid());
 
 	[Fact]
 	public void ToLogSafe_MasksTheTokenAndKeepsTheEndpoint()
