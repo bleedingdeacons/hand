@@ -108,6 +108,15 @@ internal static class HeadlessAlerts
 			}
 
 			using var http = new HttpClient { Timeout = ReportBudget };
+
+			// Identify the app, for the reasons MauiProgram.UserAgent gives at
+			// length. This client is built here rather than resolved from the
+			// container — there is no container on this path — so it does not
+			// inherit that one's header and has to say so itself. Always
+			// Android: this file compiles into no other head.
+			http.DefaultRequestHeaders.UserAgent.ParseAdd(
+				$"Hand/{AppInfo.Current.VersionString} (Android)");
+
 			using var request = new HttpRequestMessage(
 				HttpMethod.Post,
 				new Uri(root, "wp-json/reach/v1/alerts/unreadable"))
