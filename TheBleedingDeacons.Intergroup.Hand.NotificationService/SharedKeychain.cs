@@ -77,11 +77,22 @@ public static class SharedKeychain
 	/// needs a separate query anyway. Delete-then-add is one branch
 	/// instead of two and cannot leave a stale value behind.</para>
 	///
-	/// <para><c>AccessibleAfterFirstUnlock</c> because a push can arrive
-	/// while the phone is locked, which is most of the point — an
-	/// extension that cannot read the key on a locked handset can only
-	/// decrypt alerts that arrive when somebody is already holding the
-	/// phone.</para>
+	/// <para><c>AfterFirstUnlockThisDeviceOnly</c>. The
+	/// <c>AfterFirstUnlock</c> half is because a push can arrive while the
+	/// phone is locked, which is most of the point — an extension that
+	/// cannot read the key on a locked handset can only decrypt alerts
+	/// that arrive when somebody is already holding the phone.</para>
+	///
+	/// <para>The <c>ThisDeviceOnly</c> half has identical unlock
+	/// semantics and excludes the item from device migration. Without it
+	/// the key travels in an encrypted backup and restores onto a
+	/// different handset, which reconstitutes working key material on a
+	/// device the intergroup never enrolled — the iOS counterpart of the
+	/// hole <c>allowBackup="false"</c> closes on Android.</para>
+	///
+	/// <para>Existing entries keep the attribute they were written with,
+	/// so a handset enrolled before this change carries the old one until
+	/// it enrols again.</para>
 	/// </summary>
 	public static bool Write(string key)
 	{
@@ -97,7 +108,7 @@ public static class SharedKeychain
 			Service = Service,
 			Account = Account,
 			AccessGroup = AccessGroup,
-			Accessible = SecAccessible.AfterFirstUnlock,
+			Accessible = SecAccessible.AfterFirstUnlockThisDeviceOnly,
 			ValueData = NSData.FromString(key, NSStringEncoding.UTF8),
 		};
 
