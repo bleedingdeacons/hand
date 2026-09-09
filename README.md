@@ -192,9 +192,10 @@ this handset (shown in Reach's admin device list).
 
 Build-time configuration follows Register's arrangement: `appsettings.json`
 is embedded, and `devsettings.json` is layered on top when built with
-`UseDevCredentials=true` (the default). Production builds pass
-`-p:UseDevCredentials=false`, so real credentials cannot reach a shipped
-package.
+`-p:UseDevCredentials=true`. That is opt-in: it defaults to false, so a
+package built anywhere — CI or a laptop — leaves `devsettings.json` alone
+unless somebody asked for it. It used to default to true, which made the
+safe build the one you had to remember.
 
 **Both files are git-ignored, and neither is required to build.** Copy
 `appsettings.example.json` to `appsettings.json` and fill it in. The
