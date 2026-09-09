@@ -17,12 +17,20 @@ namespace TheBleedingDeacons.Intergroup.Hand;
 /// with "You must subclass the WebAuthenticatorCallbackActivity and
 /// create an IntentFilter for it which matches your callbackUrl".</para>
 ///
-/// <para><c>DataScheme</c> must match the scheme half of the callback
-/// URL that <see cref="ReachClient.CallbackUri"/> sends to Reach, which
-/// in turn must be on Reach's server-side allow-list
+/// <para><c>DataScheme</c> and <c>DataHost</c> together must match the
+/// callback URL that <see cref="ReachClient.CallbackUri"/> sends to Reach,
+/// which in turn must be on Reach's server-side allow-list
 /// (<c>DeviceRedirectValidator::APP_SCHEME</c>). Those three are one
 /// contract spread across two repositories; changing the scheme means
 /// changing all three together.</para>
+///
+/// <para>The host is declared as well as the scheme, so this exported
+/// activity matches <c>hand://auth</c> rather than all of <c>hand://</c>.
+/// A custom scheme can be claimed by another app, and the narrower filter
+/// is defence in depth rather than the defence: what travels the redirect
+/// is a one-time code that expires and is spent over TLS from this app's
+/// own process, never a token. Link has always scoped its filter this
+/// way.</para>
 ///
 /// <para><c>NoHistory</c> keeps it off the back stack, so returning from
 /// sign-in does not land the responder back on a blank redirect screen.
@@ -36,7 +44,8 @@ namespace TheBleedingDeacons.Intergroup.Hand;
 [IntentFilter(
     [Intent.ActionView],
     Categories = [Intent.CategoryDefault, Intent.CategoryBrowsable],
-    DataScheme = ReachClient.CallbackScheme)]
+    DataScheme = ReachClient.CallbackScheme,
+    DataHost = ReachClient.CallbackHost)]
 public class WebAuthenticatorCallbackActivity
     : Microsoft.Maui.Authentication.WebAuthenticatorCallbackActivity
 {

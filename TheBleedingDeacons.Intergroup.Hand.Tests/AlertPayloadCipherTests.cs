@@ -209,6 +209,39 @@ public sealed class AlertPayloadCipherTests
 			Convert.ToBase64String(key)));
 	}
 
+	/// <summary>
+	/// A payload that inflates past the ceiling is refused rather than
+	/// allocated. Two megabytes of zeroes gzip to a couple of kilobytes, so
+	/// this is a bomb that fits comfortably inside FCM's 4KB payload cap.
+	///
+	/// <para>Hand is the safer of the two apps here: the GCM tag is verified
+	/// with a key only this handset and Reach hold, so a forged payload never
+	/// reaches the inflate at all. Link's content key is wrapped to a public
+	/// key anyone can mint against, so there the tag gates nothing and the
+	/// ceiling is the only thing in front of it. The cap lives in both so the
+	/// weaker one cannot quietly drift.</para>
+	/// </summary>
+	[Fact]
+	public void Open_RefusesAPayloadThatInflatesPastTheCeiling()
+	{
+		var key = RandomNumberGenerator.GetBytes(32);
+		var nonce = RandomNumberGenerator.GetBytes(12);
+		var plaintext = Gzip(new byte[2 * 1024 * 1024]);
+		var ciphertext = new byte[plaintext.Length];
+		var tag = new byte[16];
+
+		using (var gcm = new AesGcm(key, 16))
+		{
+			gcm.Encrypt(nonce, plaintext, ciphertext, tag);
+		}
+
+		Assert.True(plaintext.Length < 4096, "the bomb should fit in an FCM payload");
+
+		Assert.Null(AlertPayloadCipher.Open(
+			Convert.ToBase64String([.. nonce, .. tag, .. ciphertext]),
+			Convert.ToBase64String(key)));
+	}
+
 	[Fact]
 	public void Open_HandlesTextThatIsNotAscii()
 	{

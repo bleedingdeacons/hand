@@ -67,7 +67,8 @@ public static class MauiProgram
 		}
 
 		// ── Layer devsettings.json on top, if present ─────────────────
-		// Only embedded when built with UseDevCredentials=true (the default).
+		// Only embedded when built with -p:UseDevCredentials=true, which is
+		// opt-in - see the csproj for why that is the polarity.
 		// It overrides appsettings.json — most notably App:Environment, so log
 		// entries are tagged correctly. Production builds skip this because the
 		// resource does not exist in the assembly.

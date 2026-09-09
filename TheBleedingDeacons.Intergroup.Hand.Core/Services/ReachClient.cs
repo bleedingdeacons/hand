@@ -33,6 +33,15 @@ public sealed class ReachClient : IReachClient
 	/// </summary>
 	public const string CallbackScheme = "hand";
 
+	/// <summary>
+	/// The host half of the callback. Declared alongside the scheme so the
+	/// Android intent filter can match <c>hand://auth</c> exactly rather
+	/// than every <c>hand://</c> URL — a custom scheme can be claimed by
+	/// another app, and there is no reason to hand it more than the one
+	/// path this app actually answers on.
+	/// </summary>
+	public const string CallbackHost = "auth";
+
 	public const string CallbackUri = "hand://auth";
 
 	private const string ApiRoot = "wp-json/reach/v1/";
