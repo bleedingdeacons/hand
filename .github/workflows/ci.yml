@@ -164,9 +164,12 @@ jobs:
           BASE_URL: ${{ vars.HAND_BASE_URL }}
         run: bash .github/scripts/write-appsettings.sh
 
-      # Android only — the iOS job needs no equivalent, because iOS push is
-      # APNs through the notification service extension and has nothing to do
-      # with this file.
+      # Android's half of the Firebase configuration. The iOS job has its own
+      # step for GoogleService-Info.plist — delivery to both heads is FCM, so
+      # both need a Firebase project. This comment used to say the iOS job
+      # needed no equivalent "because iOS push is APNs through the notification
+      # service extension"; the extension only decrypts what has already been
+      # delivered, and it was iOS push being switched off that hid the gap.
       - name: Write google-services.json
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -281,6 +284,14 @@ jobs:
         env:
           BASE_URL: ${{ vars.HAND_BASE_URL }}
         run: bash .github/scripts/write-appsettings.sh
+
+      # Without this the .ipa builds and enrols poll-only, silently. See the
+      # script, and write-google-services.sh for the Android incident that
+      # made both of these worth validating rather than merely writing.
+      - name: Write GoogleService-Info.plist
+        env:
+          GOOGLE_SERVICES_PLIST: ${{ secrets.GOOGLE_SERVICES_PLIST }}
+        run: bash .github/scripts/write-google-services-plist.sh
 
       # Release for a device (ios-arm64), unsigned.
       #

@@ -13,6 +13,25 @@
 		extension simply reads nothing — a failure that looks like a
 		missing key rather than a missing entitlement.
 	-->
+	<!--
+		APNs. Without this the app registers, Apple refuses, and the handset
+		enrols poll-only - a failure that looks exactly like a missing
+		Firebase project from the log.
+
+		<b>"development" is right for every build this repo currently
+		produces</b>, which are development-signed and sideloaded. A build
+		signed with a distribution profile - TestFlight or the App Store -
+		needs "production" here, and the value must match the profile: a
+		mismatch is rejected at install rather than at build, and the message
+		names neither side.
+
+		Apple grants this to a paid Developer Program team only. A free
+		personal team cannot sign an app that requests it at all, so a
+		sideload on a free Apple ID fails outright rather than degrading -
+		the same trap Link documents for Sign in with Apple.
+	-->
+	<key>aps-environment</key>
+	<string>development</string>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)group.com.bleedingdeacons.hand</string>

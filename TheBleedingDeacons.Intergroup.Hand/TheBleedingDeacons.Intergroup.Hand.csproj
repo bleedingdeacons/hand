@@ -533,6 +533,41 @@
 		<Compile Include="Apple\**\*.cs" />
 	</ItemGroup>
 
+	<!--
+		Firebase Cloud Messaging for the Apple heads.
+
+		<b>AdamE, not Xamarin.</b> Every comment in this repo used to say to add
+		Xamarin.Firebase.iOS.CloudMessaging, and that would not have worked:
+		Microsoft archived those bindings and the newest, 8.10.0.3, targets
+		net6.0-ios15.4. It cannot restore against a net10.0-ios project at all.
+		AdamE.Firebase.iOS.* is the maintained community binding and ships
+		net10.0-ios26.0 and net10.0-maccatalyst26.0 assets, which is what this
+		head resolves to.
+
+		The binding is what turns an APNs device token into an FCM registration
+		token. Reach sends through FCM and message.token requires the latter;
+		they are different identifiers and FCM rejects the wrong one. See
+		Apple\FirebasePush.cs.
+
+		SupportedOSPlatformVersion stays at 15.0. The ios26.0 in the package TFM
+		is the SDK it was built against, not a deployment floor, and Firebase 12
+		supports iOS 15 upwards.
+	-->
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
+		<PackageReference Include="AdamE.Firebase.iOS.CloudMessaging" Version="12.10.0" />
+
+		<!--
+			The Apple counterpart of google-services.json, and ignored for the
+			same reasons - see .gitignore. Conditional for the same reason too:
+			a checkout without it must still build, and what it produces is a
+			poll-only handset rather than a broken one. FirebasePush.Configure()
+			is what notices at runtime.
+		-->
+		<BundleResource Include="Platforms\iOS\GoogleService-Info.plist"
+		                Link="GoogleService-Info.plist"
+		                Condition="Exists('Platforms\iOS\GoogleService-Info.plist')" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<MauiXaml Update="Views\**\*.xaml">
 			<Generator>MSBuild:Compile</Generator>

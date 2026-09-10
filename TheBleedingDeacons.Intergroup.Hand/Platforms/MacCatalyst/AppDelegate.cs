@@ -3,7 +3,7 @@
 namespace TheBleedingDeacons.Intergroup.Hand;
 
 [Register("AppDelegate")]
-public class AppDelegate : MauiUIApplicationDelegate
+public class AppDelegate : HandAppDelegate
 {
 	protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
 }
