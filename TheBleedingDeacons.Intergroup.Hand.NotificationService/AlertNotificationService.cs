@@ -16,14 +16,20 @@ namespace TheBleedingDeacons.Intergroup.Hand.NotificationService;
 /// in between, an encrypted alert would put base64 in front of whoever
 /// is standing near the phone. This is that something.</para>
 ///
-/// <para><b>Not compiled by anything yet, and iOS is still sent
-/// plaintext.</b> The extension needs its own project, an App Group
-/// entitlement the app does not have, the payload key moved to a shared
-/// keychain, and Apple provisioning — none of it doable without a Mac
-/// and a developer account to hand, so <c>FcmTransport</c> encrypts for
-/// Android only and leaves the <c>aps</c> path alone. This is kept in
-/// step with the format it will one day open, so that when the hardware
-/// exists the work is provisioning rather than archaeology.</para>
+/// <para><b>Compiled and bundled.</b> This is its own project, referenced
+/// by the app under an iOS condition with <c>IsAppExtension</c>, and the
+/// App Group and shared keychain entitlements it needs are declared on
+/// both bundles. What remains external is Apple provisioning: the group
+/// must be registered against the team, and without that everything
+/// compiles and the extension reads nothing — a failure that looks like a
+/// missing key rather than a missing entitlement.</para>
+///
+/// <para><b>It only runs when the push says so.</b> iOS launches an
+/// extension for <c>mutable-content: 1</c>, which Reach sets alongside the
+/// sealed payload. A Reach that has not shipped that yet sends a plaintext
+/// <c>aps</c> alert with no <c>ciphertext</c> beside it; this passes such a
+/// notification through untouched, so the two sides can be deployed in
+/// either order.</para>
 ///
 /// <para>iOS launches it for any push carrying <c>mutable-content: 1</c>,
 /// gives it roughly thirty seconds, and shows whatever it hands back —
@@ -77,9 +83,9 @@ public sealed class AlertNotificationService : UNNotificationServiceExtension
 	/// constructor whose implicit <c>base()</c> call has nothing to bind
 	/// to — <see cref="UNNotificationServiceExtension"/> exposes only
 	/// handle-taking constructors — and the class fails to compile with
-	/// <c>CS1729</c>. That went unnoticed because nothing compiles this
-	/// project: CI builds the Android head alone, and the extension is
-	/// unbuilt source until somebody opens it on a Mac.</para>
+	/// <c>CS1729</c>. That went unnoticed for as long as nothing compiled
+	/// this project; CI now builds the iOS head, which bundles it, so the
+	/// same mistake would be caught on the next run.</para>
 	///
 	/// <para><c>public</c> rather than the customary <c>protected</c>
 	/// only because this class is sealed, where a protected member would

@@ -50,6 +50,23 @@
 		return to and sign-in hangs on the sheet. Must match
 		ReachClient.CallbackScheme and Reach's DeviceRedirectValidator.
 	-->
+	<!--
+		Remote notifications, which Reach's alert push needs twice over.
+
+		Its `aps` carries `content-available: 1`, so iOS wakes a merely
+		backgrounded app to start the looping alarm - the 30-second payload
+		sound cannot keep going on its own. Without this key that wake never
+		happens and the alert is a single chime.
+
+		It also carries `mutable-content: 1`, which is what launches the
+		notification service extension that decrypts the payload. That one
+		runs without this key, but a build that shows the alert and cannot
+		sound it is not the app anyone asked for.
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

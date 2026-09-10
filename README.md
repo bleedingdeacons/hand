@@ -22,7 +22,7 @@ what each platform can actually do.
 | Head | With the app open | With the app closed |
 | --- | --- | --- |
 | **Android** | Looping alarm on the alarm audio stream, vibration, full-screen alert | **Yes.** A data-only FCM message wakes the app, which raises a full-screen-intent notification on an alarm-category channel. The handset behaves like an incoming call, over the lock screen. |
-| **iOS** | Looping alarm (audio session set to `Playback`, so it sounds through the silent switch) | **Not yet — see Known gaps.** The design is a 30-second system-played sound named in the APNs payload, but push is disabled on this head until the Firebase iOS SDK is in place. iOS handsets currently enrol poll-only. |
+| **iOS** | Looping alarm (audio session set to `Playback`, so it sounds through the silent switch) | **Yes.** A 30-second sound named in the APNs payload plays while `content-available` wakes the app to start the looping alarm behind it. A notification service extension decrypts the payload before the lock screen renders it. Needs a Firebase iOS app and an APNs key — without them the handset enrols poll-only and says so. |
 | **Windows / macOS** | Looping alarm, toast with alarm scenario | **Only while resident.** FCM does not cover these platforms and nothing can wake a terminated process, so Hand runs from login and stays in the tray, polling. "Closed" means not on screen. |
 
 Push is the fast path, not the reliable one. Every alert is stored by
@@ -124,20 +124,25 @@ pressing one button.
 
 ## Known gaps
 
-**iOS and Mac Catalyst do not receive push yet.** `PushRegistrar` on those
-heads can obtain an *APNs device token*, but Reach sends through FCM and
-`message.token` requires an *FCM registration token* — a different
-identifier, which FCM rejects. Producing one needs the Firebase iOS SDK,
-which is not referenced yet.
+**Apple push is written but unproven on a device.** The Apple heads now
+carry the Firebase iOS SDK, configure it at launch, hand Apple's APNs device
+token to Firebase, and enrol with the FCM registration token it returns —
+which is the identifier Reach's `message.token` actually needs, and the
+thing that was missing. See `Apple/FirebasePush.cs`.
 
-Rather than enrol a handset that looks push-capable and silently never
-rings, the Apple heads report no transport and enrol **poll-only**. Alerts
-still arrive while the app is running; they will not wake a closed app.
-Android is unaffected and is the head being proven first.
+What has been verified is that it compiles and that the pieces line up.
+Nothing here has yet received a push on an iPhone, because that needs a
+Firebase iOS app, an APNs key uploaded to it, and a paid Apple Developer
+Program team — Apple grants `aps-environment` to nothing less, so a free
+personal team cannot even sign a build that asks for it. Until those exist
+the head behaves exactly as it did before: `FirebasePush.Configure()` finds
+no `GoogleService-Info.plist`, reports no transport, and the handset enrols
+**poll-only** rather than claiming a capability it does not have.
 
-To close it: add `Xamarin.Firebase.iOS.CloudMessaging`, configure Firebase
-in `AppDelegate`, and return `Fcm` plus `Messaging.SharedInstance.FcmToken`
-from `PushRegistrar`. The APNs registration plumbing is already written.
+If you came here from an older copy of this file: the binding to add is
+**`AdamE.Firebase.iOS.CloudMessaging`**, not `Xamarin.Firebase.iOS.CloudMessaging`.
+The Xamarin one is archived and its newest version targets `net6.0-ios15.4`,
+so it cannot restore against this project at all.
 
 ## Who can use it
 
@@ -466,13 +471,22 @@ counting it would penalise the deprecation rather than the debt.
 
 These need accounts I cannot act for:
 
-1. **Firebase** — create a project, add an Android app with the id
-   `com.thebleedingdeacons.intergroup.hand`, and drop `google-services.json`
-   into `Platforms/Android/`. Then paste the service-account key file
-   (*Project settings → Service accounts → Generate new private key*) into
-   **Reach → Settings**. Without this everything still works by polling.
-2. **APNs** — create an APNs key in the Apple Developer portal and upload
-   it to Firebase, so FCM can deliver to iOS.
+1. **Firebase** — create a project and add **both** apps under the id
+   `com.thebleedingdeacons.intergroup.hand`: an Android one, whose
+   `google-services.json` goes into `Platforms/Android/`, and an iOS one,
+   whose `GoogleService-Info.plist` goes into `Platforms/iOS/`. Both files
+   are git-ignored and both are optional to the build — a head without its
+   own enrols poll-only and says so in the log. CI writes them from the
+   `GOOGLE_SERVICES_JSON` and `GOOGLE_SERVICES_PLIST` secrets. Then paste
+   the service-account key file (*Project settings → Service accounts →
+   Generate new private key*) into **Reach → Settings**.
+2. **APNs** — create an APNs key in the Apple Developer portal and upload it
+   to Firebase, so FCM can deliver to iOS. This needs a **paid** Developer
+   Program team: the `aps-environment` entitlement is not available to a free
+   personal team, and a build requesting it cannot be signed by one at all.
+   The entitlements say `development`; a TestFlight or App Store build needs
+   `production`, and a value that disagrees with the provisioning profile is
+   rejected at install time with a message that names neither side.
 3. **Critical alerts (optional)** — to break through the iOS silent switch
    and Do Not Disturb you need Apple's
    `com.apple.developer.usernotifications.critical-alerts` entitlement,

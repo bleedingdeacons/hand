@@ -9,6 +9,17 @@
         <!-- When App Sandbox is enabled, this value is required to open outgoing network connections. -->
         <key>com.apple.security.network.client</key>
         <true/>
+        <!--
+            APNs on Mac Catalyst, which spells the key differently from iOS:
+            com.apple.developer.aps-environment rather than aps-environment.
+            The iOS spelling is silently ignored here, which is a good way to
+            ship a head that never registers.
+
+            See the iOS entitlements for why "development" and what a
+            distribution build needs instead.
+        -->
+        <key>com.apple.developer.aps-environment</key>
+        <string>development</string>
     </dict>
 </plist>
 
