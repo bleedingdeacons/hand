@@ -518,3 +518,10 @@ TheBleedingDeacons.Intergroup.Hand/Platforms/Android/google-services.json
 # Google expects it to ship inside every app bundle, and the build treats it
 # as optional: without it the iOS head enrols poll-only rather than failing.
 TheBleedingDeacons.Intergroup.Hand/Platforms/iOS/GoogleService-Info.plist
+
+
+# Reqnroll generates a .feature.cs beside every .feature file in
+# Hand.Specs. It is build output — regenerated from the feature file on
+# every build — and committing it would put a 30KB generated diff next to
+# every three-line change to a scenario.
+*.feature.cs

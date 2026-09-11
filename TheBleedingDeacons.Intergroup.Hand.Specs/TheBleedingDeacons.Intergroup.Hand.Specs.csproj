@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+		The executable specification for Hand.
+
+		Same tooling as DaveOS: Reqnroll over xUnit v3, Shouldly for the
+		assertions, and Microsoft.Extensions.TimeProvider.Testing so a
+		scenario can say what time it is. DaveOS also carries NSubstitute
+		and does not use it; the doubles here are hand-written recorders
+		under Support/, so it is left out rather than referenced against a
+		day that may not come. The feature files are the readable half — what a
+		responder's handset is supposed to do — and the step definitions
+		under Steps/ bind them to Hand.Core.
+
+		It sits beside Hand.Tests rather than replacing it. The xUnit suite
+		is where the edges live (a tampered ciphertext, a store that throws,
+		a header the server quoted oddly); this is where the behaviour lives,
+		in the words the README uses for it. Both run over the same library.
+
+		It references Hand.Core for the same reason Hand.Tests does, and it
+		is the same reason the Core split exists at all: nothing can
+		reference the app, whose only target frameworks are platform heads.
+		See Hand.Core's project file.
+
+		Scenarios tagged @manual @ignore are on-device acceptance criteria —
+		a push waking a closed handset, an alarm sounding through Do Not
+		Disturb, a permission prompt. Reqnroll's @ignore keeps them out of
+		the automated run; they are written down here because they are the
+		part of this app that matters most and the part no test host can
+		reach.
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<!-- xUnit v3 test projects are executables that host Microsoft.Testing.Platform. -->
+		<OutputType>Exe</OutputType>
+		<IsPackable>false</IsPackable>
+		<IsTestProject>true</IsTestProject>
+		<!-- Run through Microsoft.Testing.Platform (not VSTest) under `dotnet test`. -->
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+		<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+		<!--
+			Test project: exempt from the repo's strict analyzer gate, as
+			Hand.Tests is. Reqnroll also generates a .feature.cs behind every
+			feature file, and generated code has no business failing a style
+			rule nobody can edit it to satisfy.
+		-->
+		<RunAnalyzers>false</RunAnalyzers>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
+		<PackageReference Include="Reqnroll.xunit.v3" Version="3.3.4" />
+		<PackageReference Include="Shouldly" Version="4.3.0" />
+		<PackageReference Include="xunit.v3" Version="3.2.2" />
+		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Using Include="Xunit" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\TheBleedingDeacons.Intergroup.Hand.Core\TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
+	</ItemGroup>
+
+</Project>

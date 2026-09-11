@@ -2,5 +2,6 @@
   <Project Path="TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj" />
   <Project Path="TheBleedingDeacons.Intergroup.Hand.Core/TheBleedingDeacons.Intergroup.Hand.Core.csproj" />
   <Project Path="TheBleedingDeacons.Intergroup.Hand.NotificationService/TheBleedingDeacons.Intergroup.Hand.NotificationService.csproj" />
+  <Project Path="TheBleedingDeacons.Intergroup.Hand.Specs/TheBleedingDeacons.Intergroup.Hand.Specs.csproj" />
   <Project Path="TheBleedingDeacons.Intergroup.Hand.Tests/TheBleedingDeacons.Intergroup.Hand.Tests.csproj" />
 </Solution>
