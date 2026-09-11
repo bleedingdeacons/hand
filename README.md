@@ -238,13 +238,14 @@ exactly that bug and now has the same fix.
 
 ### The Core split
 
-Three projects:
+Four projects:
 
 | Project | Frameworks | What is in it |
 | --- | --- | --- |
 | `TheBleedingDeacons.Intergroup.Hand` | the four platform heads | The MAUI app: views, view-models, the platform partials, and every service that touches `Preferences`, `SecureStorage`, `FileSystem`, `MainThread`, `Vibration`, `AppInfo`, `DeviceInfo` or `WebAuthenticator`. |
 | `TheBleedingDeacons.Intergroup.Hand.Core` | `net10.0` | The half with no MAUI in it: the wire models, `ReachClient`, `AlertService`, the Serilog and Better Stack glue. |
 | `TheBleedingDeacons.Intergroup.Hand.Tests` | `net10.0` | xUnit v3 over Hand.Core. |
+| `TheBleedingDeacons.Intergroup.Hand.Specs` | `net10.0` | Reqnroll (BDD) feature files and step definitions, over the same library. |
 
 The split exists so the code can be tested at all. A test project cannot
 reference the app — its target frameworks are `net10.0-android`, `-ios`,
@@ -466,6 +467,49 @@ scope for the same reason.
 Deprecated code is left out deliberately: writing tests for something already
 marked for removal would move the number without improving anything, and
 counting it would penalise the deprecation rather than the debt.
+
+### The executable specification
+
+```bash
+dotnet test TheBleedingDeacons.Intergroup.Hand.Specs
+```
+
+Reqnroll over xUnit v3, with Shouldly for the assertions — the same tooling
+DaveOS uses, and deliberately so: there is no reason for two projects in the
+same hands to have two dialects of the same thing. The feature files under
+[`TheBleedingDeacons.Intergroup.Hand.Specs/Features`](TheBleedingDeacons.Intergroup.Hand.Specs/Features)
+say what a duty handset is supposed to do, in the words this README uses for
+it; [`specs/domain-model.md`](specs/domain-model.md) is the glossary behind
+them.
+
+**It sits beside the xUnit suite rather than replacing it.** The two answer
+different questions. The xUnit tests are where the edges live — a tampered
+ciphertext, a store that throws, a number WordPress quoted oddly, a header
+the server spelled strangely — and they are what the coverage badge measures.
+The specs are where the behaviour lives: only red rings, an acknowledged card
+stays on screen, a message somebody else answered comes off this handset, a
+removal notice is a prompt to check rather than an instruction to obey. A
+change that breaks one of those breaks a sentence somebody can read.
+
+**The specification was written after the app, not before it**, which is the
+opposite of how BDD is usually sold and worth being honest about: the
+scenarios were reverse-engineered from `Hand.Core` and from this file. What
+that buys is a readable statement of behaviour that actually runs; what it
+does not buy is any guarantee that the behaviour was ever *designed* this way.
+New behaviour from here is worth specifying first.
+
+**Scenarios tagged `@manual @ignore` are on-device acceptance criteria** —
+a data-only push waking a closed handset, a siren on the alarm stream with
+the media volume at zero, a full-screen intent over the lock screen, the app
+lock skipping itself while an alert is outstanding. Reqnroll skips them, so
+`dotnet test` runs the automated ones and no filter is needed. They are
+written down because they are the part of this app that matters most and the
+part no test host can reach: the alternative is that they live in somebody's
+head.
+
+CI runs the specs in the `test` job, after the coverage upload. They are a
+gate; they are deliberately not in the coverage figure, so the badge goes on
+meaning what it says above.
 
 ## Setup you have to do yourself
 
