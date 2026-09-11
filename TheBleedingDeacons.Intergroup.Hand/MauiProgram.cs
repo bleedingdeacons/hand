@@ -274,6 +274,13 @@ public static class MauiProgram
 	{
 		var cfg = new LoggerConfiguration()
 			.ReadFrom.Configuration(config)
+#if DEBUG
+			// After the configured level, so it wins. appsettings asks for
+			// Information, which is right for a responder's phone and wrong for
+			// a cable and a terminal: it hides every Log.Debug line, and those
+			// are the ones written for exactly this situation.
+			.MinimumLevel.Debug()
+#endif
 			.Enrich.WithProperty("Application", appName)
 			.Enrich.WithProperty("Environment", environment)
 			.Enrich.WithProperty("Platform", DeviceInfo.Platform.ToString())
@@ -303,10 +310,26 @@ public static class MauiProgram
 
 		// The Serilog console sink calls Console.set_ForegroundColor, which throws
 		// PlatformNotSupportedException on Android and iOS — every log event then
-		// hits SelfLog with a stack trace and drowns real diagnostics. On mobile
-		// the Debug sink already surfaces logs to the IDE, so scope this to desktop.
+		// hits SelfLog with a stack trace and drowns real diagnostics. So it stays
+		// desktop only, and Android gets a sink of its own below rather than a
+		// workaround for this one.
 #if WINDOWS || MACCATALYST
 		cfg = cfg.WriteTo.Console();
+#endif
+
+		// Live output on a handset, which there was none of. The comment above
+		// used to end "the Debug sink already surfaces logs to the IDE" — true,
+		// and worth nothing to an app launched by adb, which is every deployment
+		// /kick makes. No listener, so the only record was the file, readable
+		// after the fact and only by somebody who knew to ask for it.
+		//
+		//     adb -s <serial> logcat -s Hand:V
+		//
+		// Verified absent before this went in rather than assumed: Hand was
+		// running on a Pixel and its process log held not one Serilog line. See
+		// LogcatSink, including why it is not the console sink.
+#if ANDROID
+		cfg = cfg.WriteTo.Sink(new LogcatSink());
 #endif
 #else
 		cfg = cfg.WriteTo.File(
