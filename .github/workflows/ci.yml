@@ -203,18 +203,11 @@ jobs:
       #
       # Debug config: no code signing (no keystore in the repo) and no release
       # trimming. Analyzer errors from .editorconfig break the build here.
-      #
-      # UseDevCredentials=false matters more than it looks. It defaults to true
-      # in the csproj, which embeds devsettings.json and defines
-      # USE_DEV_CREDENTIALS — so a build that left it alone would compile the
-      # convenience path and leave the shipping path unanalysed. CI gates what
-      # ships. (It also keeps a git-ignored file out of the equation entirely.)
       - name: Build & analyze
         run: >
           dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
           -c Debug
           -p:HandAndroidOnly=true
-          -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
 
       # A separate Release build rather than uploading the Debug output above.
@@ -225,16 +218,11 @@ jobs:
       # our code runs. The csproj carries the whole account beside
       # TargetFrameworks. Release embeds them by default and strips to one ABI,
       # so it is both correct and a third the size.
-      #
-      # UseDevCredentials=false for the same reason the analyze step passes it,
-      # and it matters more here: this artifact is a thing somebody installs,
-      # and devsettings.json has no business being inside one.
       - name: Build the APK
         run: >
           dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
           -c Release
           -p:HandAndroidOnly=true
-          -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
 
       # -Signed.apk is the one to keep: .NET Android emits an unsigned
@@ -357,7 +345,6 @@ jobs:
           -c Release
           -p:HandIosOnly=true
           -p:HandUnsigned=true
-          -p:UseDevCredentials=false
           -p:RuntimeIdentifier=ios-arm64
           -p:ContinuousIntegrationBuild=true
 
@@ -475,16 +462,11 @@ jobs:
       # TargetFramework as a global property and forces it onto Hand.Core,
       # which is plain net10.0, and its restore fails with NU1105. The csproj
       # says the same at more length.
-      #
-      # UseDevCredentials=false for the reason the Android job passes it: it
-      # defaults true in the csproj, so a build that left it alone would
-      # compile the convenience path and leave the shipping path unanalysed.
       - name: Build & analyze
         run: >
           dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
           -c Debug
           -p:HandWindowsOnly=true
-          -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
 
   test:
@@ -858,7 +840,6 @@ jobs:
           dotnet build TheBleedingDeacons.Intergroup.Hand/TheBleedingDeacons.Intergroup.Hand.csproj
           -c Release
           -p:HandAndroidOnly=true
-          -p:UseDevCredentials=false
           -p:ContinuousIntegrationBuild=true
 
       # -Signed.apk is the one to keep: .NET Android emits an unsigned

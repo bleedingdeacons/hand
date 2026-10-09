@@ -66,24 +66,6 @@ public static class MauiProgram
 			}
 		}
 
-		// ── Layer devsettings.json on top, if present ─────────────────
-		// Only embedded when built with -p:UseDevCredentials=true, which is
-		// opt-in - see the csproj for why that is the polarity.
-		// It overrides appsettings.json — most notably App:Environment, so log
-		// entries are tagged correctly. Production builds skip this because the
-		// resource does not exist in the assembly.
-		using (var stream = assembly.GetManifestResourceStream(
-			"TheBleedingDeacons.Intergroup.Hand.devsettings.json"))
-		{
-			if (stream is not null)
-			{
-				var devConfig = new ConfigurationBuilder()
-					.AddJsonStream(stream)
-					.Build();
-				builder.Configuration.AddConfiguration(devConfig);
-			}
-		}
-
 		builder
 			.UseMauiApp<App>()
 			.UseMauiCommunityToolkit()
