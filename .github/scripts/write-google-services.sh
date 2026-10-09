@@ -32,7 +32,7 @@
 set -euo pipefail
 
 target=TheBleedingDeacons.Intergroup.Hand/Platforms/Android/google-services.json
-expected_package=com.thebleedingdeacons.intergroup.hand
+expected_package=org.thebleedingdeacons.intergroup.hand
 
 if [ -z "${GOOGLE_SERVICES_JSON:-}" ]; then
 	echo 'GOOGLE_SERVICES_JSON is not set; building without Firebase.'
