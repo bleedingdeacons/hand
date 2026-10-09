@@ -195,14 +195,14 @@ Reach writes an audit entry for every such read.
 Settings → the Reach server address, how often to poll, and a name for
 this handset (shown in Reach's admin device list).
 
-Build-time configuration follows Register's arrangement: `appsettings.json`
-is embedded, and `devsettings.json` is layered on top when built with
-`-p:UseDevCredentials=true`. That is opt-in: it defaults to false, so a
-package built anywhere — CI or a laptop — leaves `devsettings.json` alone
-unless somebody asked for it. It used to default to true, which made the
-safe build the one you had to remember.
+Build-time configuration is one file, `appsettings.json`, embedded when it
+exists. There is no dev layer any more: `devsettings.json` and
+`-p:UseDevCredentials` were removed, so a local build is configured exactly
+like a CI one. To point a local build at the test bed, give it an
+`appsettings.json` whose `Reach:BaseUrl` is `https://aa-bristol.org/amber`,
+which is what CI writes from the `HAND_BASE_URL` variable.
 
-**Both files are git-ignored, and neither is required to build.** Copy
+**It is git-ignored, and not required to build.** Copy
 `appsettings.example.json` to `appsettings.json` and fill it in. The
 example is the only one tracked: `appsettings.json` is the production
 settings file, so it is where real values get typed — a Better Stack
@@ -330,18 +330,16 @@ That was wrong, and it left the iOS head unbuilt for weeks:
 entitlements. Switching signing off is sufficient, and the entitlements stay
 declared unconditionally, which is where a setting like that belongs.
 
-CI passes `-p:UseDevCredentials=false`, so what it analyses is the code that
-ships rather than the `USE_DEV_CREDENTIALS` convenience path. Reproduce a CI
-build locally with:
+Reproduce a CI build locally with:
 
 ```bash
-dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true -p:UseDevCredentials=false
+dotnet build TheBleedingDeacons.Intergroup.Hand -p:HandAndroidOnly=true
 ```
 
 The iOS job, which needs a Mac:
 
 ```bash
-dotnet build TheBleedingDeacons.Intergroup.Hand -c Release -p:HandIosOnly=true -p:HandUnsigned=true -p:UseDevCredentials=false -p:RuntimeIdentifier=ios-arm64
+dotnet build TheBleedingDeacons.Intergroup.Hand -c Release -p:HandIosOnly=true -p:HandUnsigned=true -p:RuntimeIdentifier=ios-arm64
 ```
 
 ### What CI produces

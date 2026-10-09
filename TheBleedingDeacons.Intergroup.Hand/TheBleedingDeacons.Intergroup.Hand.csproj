@@ -188,29 +188,6 @@
 		<Platforms>AnyCPU</Platforms>
 	</PropertyGroup>
 
-	<PropertyGroup>
-		<!--
-			Defaults to false, and the polarity is the point.
-
-			It used to default to true, so a release package built anywhere
-			but CI embedded devsettings.json — which holds a live Better Stack
-			source token — unless whoever ran the build remembered
-			-p:UseDevCredentials=false. The safe path should not be the one you
-			have to remember. Nothing ever leaked this way; the file is
-			git-ignored and untracked. It was the shape that was wrong.
-
-			Local development against the dev environment now opts in:
-
-			  dotnet build TheBleedingDeacons.Intergroup.Hand -p:UseDevCredentials=true
-
-			CI still passes -p:UseDevCredentials=false explicitly at every
-			build site. Those are redundant now rather than load-bearing, and
-			are left in place because saying so costs nothing.
-		-->
-		<UseDevCredentials Condition="'$(UseDevCredentials)' == ''">false</UseDevCredentials>
-		<DefineConstants Condition="'$(UseDevCredentials)' == 'true'">$(DefineConstants);USE_DEV_CREDENTIALS</DefineConstants>
-	</PropertyGroup>
-
 	<!--
 		Ship one ABI on Release. The Android SDK defaults RuntimeIdentifiers to
 		'android-arm64;android-x64', spending half the payload on an ABI only an
@@ -312,19 +289,18 @@
 		resource being absent (it logs which resources it did find and carries
 		on with defaults), so a checkout without the file builds and runs. A
 		hard reference would fail the build on a fresh clone and on CI.
+
+		It is the only build-time configuration. devsettings.json and
+		-p:UseDevCredentials, a second file layered on top for dev builds,
+		were removed: two files meant two places for the server address and
+		the Better Stack token to differ, and a dev build that did not ship
+		the code CI analysed. A local build that should talk to the test bed
+		gets an appsettings.json saying so, exactly as CI writes one from
+		HAND_BASE_URL.
 	-->
 	<ItemGroup>
 		<EmbeddedResource Include="appsettings.json" Condition="Exists('appsettings.json')" />
 		<None Remove="appsettings.json" />
-	</ItemGroup>
-
-	<!-- Dev credentials: only embedded when UseDevCredentials=true, which is
-	     opt-in. Any build that does not ask for it - CI, and anything anyone
-	     runs without the flag - never touches this file, so it cannot leak
-	     into a package by omission. -->
-	<ItemGroup Condition="'$(UseDevCredentials)' == 'true'">
-		<EmbeddedResource Include="devsettings.json" Condition="Exists('devsettings.json')" />
-		<None Remove="devsettings.json" />
 	</ItemGroup>
 
 	<!--

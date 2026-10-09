@@ -468,8 +468,10 @@ Properties/launchSettings.json
 # ── Hand-specific ───────────────────────────────────────────
 #
 # appsettings.json and devsettings.json both stay ignored (the inherited
-# rules above already cover them). BOTH carry real configuration on a
-# working machine.
+# rules above already cover them). appsettings.json carries real
+# configuration on a working machine. devsettings.json is no longer read by
+# anything, but an old copy may still sit in a checkout with a live token in
+# it, so it stays ignored.
 #
 # appsettings.json was briefly tracked here, on the reasoning that the
 # committed copy held nothing but an app name and Serilog levels so a

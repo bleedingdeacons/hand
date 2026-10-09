@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Reflection;
-using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 #if IOS
@@ -12,21 +10,18 @@ using TheBleedingDeacons.Intergroup.Hand.Services.Interfaces;
 namespace TheBleedingDeacons.Intergroup.Hand.Services;
 
 /// <summary>
-/// Reads configuration from three places, in order of increasing
-/// authority: the embedded <c>appsettings.json</c>, the embedded
-/// <c>devsettings.json</c> (dev builds only), and what the user has saved
-/// on the device.
+/// Reads configuration from two places, in order of increasing
+/// authority: the embedded <c>appsettings.json</c>, and what the user has
+/// saved on the device.
 ///
 /// <para>Much smaller than Register's equivalent because Hand has far
-/// less to configure — one server address, one log sink, one token — but
-/// deliberately the same shape, including the <c>USE_DEV_CREDENTIALS</c>
-/// split that keeps real credentials out of production packages.</para>
+/// less to configure — one server address, one log sink, one token.
+/// There is no dev layer: <c>devsettings.json</c> and
+/// <c>USE_DEV_CREDENTIALS</c> were removed, so a local build is configured
+/// by its own <c>appsettings.json</c> like any other.</para>
 /// </summary>
 public sealed class ConfigurationService : IConfigurationService
 {
-	private const string DevCredentialsResource =
-		"TheBleedingDeacons.Intergroup.Hand.devsettings.json";
-
 	/// <summary>
 	/// Secure-storage key for this handset's device token.
 	///
@@ -365,48 +360,7 @@ public sealed class ConfigurationService : IConfigurationService
 		}
 	}
 
-	/// <summary>
-	/// Read one setting, preferring the embedded dev credentials when
-	/// this is a dev build and falling back to appsettings.json.
-	/// </summary>
-	private string ReadSetting(string section, string key)
-	{
-#if USE_DEV_CREDENTIALS
-		var fromDev = ReadEmbeddedDevSetting(section, key);
-		if (!string.IsNullOrWhiteSpace(fromDev))
-		{
-			return fromDev;
-		}
-#endif
-
-		return _configuration.GetSection(section)[key] ?? string.Empty;
-	}
-
-	private static string ReadEmbeddedDevSetting(string section, string key)
-	{
-		try
-		{
-			var assembly = Assembly.GetExecutingAssembly();
-			using var stream = assembly.GetManifestResourceStream(DevCredentialsResource);
-			if (stream is null)
-			{
-				return string.Empty;
-			}
-
-			using var document = JsonDocument.Parse(stream);
-			if (document.RootElement.TryGetProperty(section, out var sectionElement)
-				&& sectionElement.TryGetProperty(key, out var value))
-			{
-				return value.GetString() ?? string.Empty;
-			}
-		}
-		catch (Exception ex)
-		{
-			// Malformed dev settings must not stop the app starting; the
-			// production path below still applies.
-			Log.Warning(ex, "Embedded devsettings.json could not be read for {Section}:{Key}", section, key);
-		}
-
-		return string.Empty;
-	}
+	/// <summary>Read one setting from the embedded appsettings.json.</summary>
+	private string ReadSetting(string section, string key) =>
+		_configuration.GetSection(section)[key] ?? string.Empty;
 }
