@@ -846,7 +846,7 @@ jobs:
       # intermediate alongside it. Renamed for the version so a downloaded file
       # still says what it is once it is sitting in somebody's downloads folder
       # next to four others all called
-      # com.thebleedingdeacons.intergroup.hand-Signed.apk.
+      # org.thebleedingdeacons.intergroup.hand-Signed.apk.
       - name: Name the APK for its version
         id: apk
         if: steps.bump.outputs.version != ''

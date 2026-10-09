@@ -29,7 +29,7 @@
 set -euo pipefail
 
 target=TheBleedingDeacons.Intergroup.Hand/Platforms/iOS/GoogleService-Info.plist
-expected_bundle=com.thebleedingdeacons.intergroup.hand
+expected_bundle=org.thebleedingdeacons.intergroup.hand
 
 if [ -z "${GOOGLE_SERVICES_PLIST:-}" ]; then
 	echo 'GOOGLE_SERVICES_PLIST is not set; building without Firebase.'

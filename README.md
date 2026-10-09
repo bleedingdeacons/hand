@@ -407,7 +407,7 @@ expects this file to ship inside an APK — but an Actions log is a worse place
 for it than the inside of a binary. So, unlike `appsettings.json`, its contents
 are never printed. The script validates it instead: malformed JSON fails the
 build, and so does a file whose `package_name` is not
-`com.thebleedingdeacons.intergroup.hand`, because a config for the wrong app
+`org.thebleedingdeacons.intergroup.hand`, because a config for the wrong app
 produces a build that looks completely healthy and never receives a push.
 
 `v1.17.1` was released before this existed and is poll-only. It was found by
@@ -514,7 +514,7 @@ meaning what it says above.
 These need accounts I cannot act for:
 
 1. **Firebase** — create a project and add **both** apps under the id
-   `com.thebleedingdeacons.intergroup.hand`: an Android one, whose
+   `org.thebleedingdeacons.intergroup.hand`: an Android one, whose
    `google-services.json` goes into `Platforms/Android/`, and an iOS one,
    whose `GoogleService-Info.plist` goes into `Platforms/iOS/`. Both files
    are git-ignored and both are optional to the build — a head without its

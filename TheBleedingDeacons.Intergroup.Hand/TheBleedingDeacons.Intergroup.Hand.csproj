@@ -127,7 +127,7 @@
 		<ApplicationTitle>Hand</ApplicationTitle>
 
 		<!-- App Identifier -->
-		<ApplicationId>com.thebleedingdeacons.intergroup.hand</ApplicationId>
+		<ApplicationId>org.thebleedingdeacons.intergroup.hand</ApplicationId>
 
 		<!--
 			Versions. ApplicationDisplayVersion must stay unconditional: it feeds
